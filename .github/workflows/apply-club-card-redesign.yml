@@ -1,0 +1,140 @@
+name: Apply Club Brinky card redesign
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: contains(github.event.head_commit.message, '[apply-club-redesign]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply redesign
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+
+          css = r'''
+          /* ===== CLUB BRINKY v2.2.4 · tarjeta premium + QR ===== */
+          .club-card-premium{position:relative;overflow:hidden;border-radius:28px;background:linear-gradient(145deg,#0a9a45 0%,#087a39 58%,#07552c 100%);color:#fff;padding:0;box-shadow:0 20px 50px rgba(10,85,44,.28);min-height:680px}
+          .club-card-premium:before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 8% 10%,rgba(255,255,255,.20),transparent 23%),radial-gradient(circle at 95% 5%,rgba(255,211,61,.18),transparent 22%),linear-gradient(135deg,transparent 70%,rgba(255,255,255,.06));pointer-events:none}
+          .club-premium-top{position:relative;padding:24px 24px 20px;display:grid;grid-template-columns:145px 1fr 78px;gap:18px;align-items:center}
+          .club-premium-mascot{width:145px;height:145px;border-radius:32px;background:#fff;object-fit:contain;padding:8px;box-shadow:0 10px 25px rgba(0,0,0,.16)}
+          .club-premium-title{font-size:clamp(2rem,7vw,3.5rem);font-weight:950;line-height:.9;letter-spacing:-.04em;text-shadow:0 4px 0 rgba(0,0,0,.10);margin:0}
+          .club-premium-subtitle{margin:10px 0 0;font-weight:850;letter-spacing:.04em;color:#eafff1}
+          .club-premium-logo{width:74px;height:74px;border-radius:22px;background:#fff;padding:6px;object-fit:cover}
+          .club-premium-body{position:relative;margin:0 16px 16px;background:rgba(255,255,255,.97);color:#172033;border-radius:26px;padding:22px}
+          .club-premium-member{display:grid;grid-template-columns:1fr auto;gap:15px;align-items:center}
+          .club-premium-name{font-size:clamp(1.65rem,5vw,2.4rem);font-weight:950;margin:0 0 6px;color:#172033}
+          .club-premium-code{display:inline-block;background:#0b9d46;color:#fff;padding:7px 13px;border-radius:12px;font-size:1.15rem;font-weight:950;letter-spacing:.03em}
+          .club-premium-date{display:block;color:#667085;font-size:.78rem;font-weight:800;margin-top:7px}
+          .club-premium-star-badge{font-size:2.8rem;line-height:1;background:#fff7c9;border-radius:22px;padding:14px 17px;color:#f3b900;box-shadow:inset 0 0 0 2px #ffe68a}
+          .club-premium-progress{margin-top:18px;border-radius:22px;background:linear-gradient(135deg,#09a148,#087a39);color:#fff;padding:18px}
+          .club-premium-progress-title{font-size:1.25rem;font-weight:950;margin-bottom:12px}.club-premium-progress-title b{font-size:1.8rem;color:#ffe36b}
+          .club-premium-stars{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;align-items:center}
+          .club-premium-star{font-size:clamp(1.55rem,5vw,2.35rem);text-align:center;color:#fff;filter:drop-shadow(0 2px 2px rgba(0,0,0,.15))}.club-premium-star.on{color:#ffd43b}
+          .club-premium-rewards{margin-top:13px;border:1px dashed rgba(255,255,255,.7);border-radius:14px;padding:10px;text-align:center;font-weight:850;font-size:.86rem;color:#fff}
+          .club-premium-lower{display:grid;grid-template-columns:170px 1fr;gap:18px;margin-top:18px;align-items:center}
+          .club-premium-qr{background:#fff;border-radius:18px;padding:10px;display:flex;justify-content:center;align-items:center;min-height:150px;border:3px solid #9bdfae}.club-premium-qr img{width:100%;max-width:150px;aspect-ratio:1;object-fit:contain}.club-premium-qr canvas{max-width:150px;width:100%;height:auto}
+          .club-premium-ref{background:#fff8dd;border-radius:18px;padding:18px;border:1px solid #f2d77a}.club-premium-ref h4{margin:0 0 8px;color:#08752f;font-size:1rem}.club-premium-ref-code{display:block;background:#087a39;color:#fff;text-align:center;padding:11px;border-radius:12px;font-size:1.55rem;font-weight:950;letter-spacing:.04em}.club-premium-ref p{font-size:.86rem;margin:9px 0 0;color:#344054}
+          .club-premium-welcome{margin-top:16px;border:1px solid #e4e7ec;border-radius:16px;padding:12px 14px;background:#fff}.club-premium-welcome strong{color:#08752f}.club-premium-footer{position:relative;padding:12px 20px 18px;text-align:center;font-weight:850;color:#eafff1}.club-premium-footer span{opacity:.92}
+          .club-search-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}.club-scan-btn{white-space:nowrap;background:#fff;color:#5b21b6;border:1px solid #d9d0ff;border-radius:14px;padding:13px 15px;font-weight:900;cursor:pointer}.club-scan-btn:hover{background:#f7f2ff}
+          .club-scanner-backdrop{position:fixed;inset:0;background:rgba(10,15,25,.78);z-index:80;display:flex;align-items:center;justify-content:center;padding:16px}.club-scanner{width:min(480px,100%);background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 20px 70px rgba(0,0,0,.35)}.club-scanner-head{padding:16px 18px;display:flex;align-items:center;justify-content:space-between}.club-scanner-head h3{margin:0}.club-scanner-close{border:0;background:#f2f4f7;border-radius:50%;width:40px;height:40px;font-size:1.2rem;cursor:pointer}.club-scanner-video{display:block;width:100%;aspect-ratio:1;background:#111;object-fit:cover}.club-scanner-help{padding:14px 18px;color:#667085;font-size:.85rem}.club-scanner-status{padding:0 18px 16px;font-weight:850;color:#08752f}
+          @media(max-width:620px){.club-premium-top{grid-template-columns:82px 1fr 52px;padding:18px 16px 15px;gap:10px}.club-premium-mascot{width:82px;height:82px;border-radius:20px}.club-premium-logo{width:50px;height:50px;border-radius:15px}.club-premium-title{font-size:clamp(1.55rem,8vw,2.2rem)}.club-premium-subtitle{font-size:.68rem}.club-premium-body{margin:0 9px 10px;padding:15px}.club-premium-member{grid-template-columns:1fr auto}.club-premium-name{font-size:1.45rem}.club-premium-code{font-size:.98rem}.club-premium-star-badge{font-size:2rem;padding:10px 12px}.club-premium-lower{grid-template-columns:125px 1fr;gap:10px}.club-premium-qr{min-height:125px}.club-premium-qr img,.club-premium-qr canvas{max-width:112px}.club-premium-ref{padding:12px}.club-premium-ref-code{font-size:1.05rem}.club-premium-ref p{font-size:.74rem}.club-premium-progress{padding:14px}.club-premium-progress-title{font-size:1rem}.club-premium-stars{gap:2px}.club-premium-star{font-size:1.35rem}.club-premium-footer{font-size:.78rem}.club-search-row{grid-template-columns:1fr}.club-scan-btn{width:100%}}
+          '''
+
+          marker = '</head>'
+          if 'CLUB BRINKY v2.2.4' not in s:
+              s = s.replace(marker, '<style>'+css+'</style>\n'+marker, 1)
+
+          s = s.replace('styles.css?v=2.2.3', 'styles.css?v=2.2.4')
+          s = s.replace('app.js?v=2.2.3', 'app.js?v=2.2.4')
+          s = s.replace('v2.2.3 · Folios desde 80', 'v2.2.4 · Folios desde 80')
+
+          js = r'''
+          <script>
+          (()=>{
+            const $=id=>document.getElementById(id);
+            const parseCard=()=>{
+              const el=$('loyaltyCard'); if(!el) return null;
+              const old=el.textContent.replace(/\s+/g,' ').trim();
+              const code=(old.match(/BRK-\d{3,}/i)||['BRK-0000'])[0].toUpperCase();
+              const starMatch=old.match(/(\d+)\s*(?:de|\/|of)\s*(\d+)/i)||old.match(/(\d+)\s+de\s+(\d+)\s+Estrellas/i);
+              const stars=starMatch?Math.max(0,Number(starMatch[1])):0;
+              const meta=starMatch?Math.max(1,Number(starMatch[2])):8;
+              let name='Socio Club Brinky';
+              const nameEl=el.querySelector('.loyalty-member strong,.loyalty-member h3,.loyalty-member h2,.loyalty-name');
+              if(nameEl && nameEl.textContent.trim()) name=nameEl.textContent.trim();
+              else {const m=old.match(/(?:Hola|Socio|Cliente)\s*[:]?\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ .'-]{2,})/i); if(m) name=m[1].trim()}
+              if(name==='Socio Club Brinky'){
+                const before=old.split(code)[0].trim().split(' '); if(before.length) name=before.slice(-3).join(' ')
+              }
+              let qrSrc='';
+              const qrImg=[...el.querySelectorAll('img')].find(i=>/qr|c[oó]digo/i.test((i.alt||'')+' '+(i.className||''))) || el.querySelector('.loyalty-qr img');
+              if(qrImg?.src) qrSrc=qrImg.src;
+              const canvas=el.querySelector('.loyalty-qr canvas,canvas');
+              if(!qrSrc && canvas){try{qrSrc=canvas.toDataURL('image/png')}catch(e){}}
+              if(!qrSrc){const any=[...el.querySelectorAll('img')].find(i=>i.src); if(any) qrSrc=any.src}
+              const date=(old.match(/(?:Socio desde|Desde)\s*[:]?\s*([0-9/.-]{8,})/i)||[])[1]||'';
+              let settings={}; try{settings=JSON.parse(localStorage.getItem('brinky_loyalty_settings_v2')||'{}')}catch(e){}
+              const r1=Number(settings.r1||4),r2=Number(settings.r2||8),n1=settings.n1||'50% de descuento',n2=settings.n2||'1 renta gratis';
+              return {el,name,code,stars,meta,date,qrSrc,r1,r2,n1,n2}
+            };
+            const enhance=()=>{
+              const d=parseCard(); if(!d||!d.el) return;
+              if(d.el.dataset.brinkySource===d.code+'|'+d.name+'|'+d.stars) return;
+              const starsHtml=Array.from({length:8},(_,i)=>'<span class="club-premium-star '+(i<d.stars?'on':'')+'">★</span>').join('');
+              const qr=d.qrSrc?'<img src="'+d.qrSrc.replace(/"/g,'&quot;')+'" alt="QR Club Brinky">':'<div style="font-weight:900;text-align:center;color:#667085">QR disponible al compartir la tarjeta</div>';
+              const rewardText=d.stars>=d.r2?'🎉 Recompensa: '+d.n2:d.stars>=d.r1?'🎁 Meta alcanzada: '+d.n1:'4 ⭐ = '+d.n1+'  |  8 ⭐ = '+d.n2;
+              d.el.innerHTML='<div class="club-premium-top"><img class="club-premium-mascot" src="icons/icon-192.png" alt="Brinky"><div><h2 class="club-premium-title">CLUB<br>BRINKY</h2><p class="club-premium-subtitle">MEMBRESÍA · BRINKY FIESTA</p></div><img class="club-premium-logo" src="icons/icon-192.png" alt="BF"></div>'+
+              '<div class="club-premium-body"><div class="club-premium-member"><div><h3 class="club-premium-name">'+d.name.replace(/</g,'&lt;')+'</h3><span class="club-premium-code">'+d.code+'</span>'+(d.date?'<span class="club-premium-date">SOCIO DESDE: '+d.date+'</span>':'')+'</div><div class="club-premium-star-badge">⭐ '+d.stars+'</div></div>'+
+              '<div class="club-premium-progress"><div class="club-premium-progress-title"><b>'+d.stars+'</b> de '+d.meta+' ESTRELLAS BRINKY</div><div class="club-premium-stars">'+starsHtml+'</div><div class="club-premium-rewards">'+rewardText+'</div></div>'+
+              '<div class="club-premium-lower"><div class="club-premium-qr">'+qr+'</div><div class="club-premium-ref"><h4>TU CÓDIGO DE REFERENCIA</h4><span class="club-premium-ref-code">'+d.code+'</span><p>Recomienda con <b>'+d.code+'</b>: ambos ganan <b>1 Estrella ⭐</b> cuando la nueva renta se complete.</p></div></div>'+
+              '<div class="club-premium-welcome">🎉 <strong>¡Bienvenido al Club Brinky Fiesta!</strong> 🐸<br><span style="color:#667085">Gracias por elegir Brinky Fiesta. Un mundo de diversión y beneficios te espera.</span></div></div>'+
+              '<div class="club-premium-footer"><span>WhatsApp 999 447 6314 · Brincolines Brinky Fiesta</span></div>';
+              d.el.dataset.brinkySource=d.code+'|'+d.name+'|'+d.stars;
+            };
+            const setupClub=()=>{
+              const search=$('clubQuickSearch'); if(search && !search.parentElement.classList.contains('club-search-row')){
+                const row=document.createElement('div'); row.className='club-search-row'; search.parentNode.insertBefore(row,search); row.appendChild(search);
+                const b=document.createElement('button'); b.type='button'; b.className='club-scan-btn'; b.id='clubScanQrBtn'; b.textContent='📷 Escanear QR'; row.appendChild(b); b.addEventListener('click',openScanner);
+              }
+            };
+            let scannerStream=null,scannerTimer=null;
+            function closeScanner(){if(scannerTimer)clearInterval(scannerTimer);scannerTimer=null;if(scannerStream)scannerStream.getTracks().forEach(t=>t.stop());scannerStream=null;document.querySelector('.club-scanner-backdrop')?.remove()}
+            async function openScanner(){
+              if(document.querySelector('.club-scanner-backdrop')) return;
+              const wrap=document.createElement('div');wrap.className='club-scanner-backdrop';wrap.innerHTML='<div class="club-scanner"><div class="club-scanner-head"><h3>Escanear tarjeta Club Brinky</h3><button class="club-scanner-close" type="button">×</button></div><video class="club-scanner-video" autoplay playsinline></video><div class="club-scanner-help">Apunta la cámara al QR de la tarjeta. Solo se utilizará el código BRK del socio.</div><div class="club-scanner-status">Solicitando cámara…</div></div>';document.body.appendChild(wrap);wrap.querySelector('.club-scanner-close').onclick=closeScanner;wrap.addEventListener('click',e=>{if(e.target===wrap)closeScanner()});
+              const video=wrap.querySelector('video'),status=wrap.querySelector('.club-scanner-status');
+              if(!('BarcodeDetector' in window)){status.textContent='Este navegador no ofrece lector QR nativo. Puedes buscar al socio por su código BRK.';return}
+              try{scannerStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});video.srcObject=scannerStream;await video.play();const detector=new BarcodeDetector({formats:['qr_code']});status.textContent='Buscando QR…';scannerTimer=setInterval(async()=>{try{const codes=await detector.detect(video);if(codes.length){const raw=String(codes[0].rawValue||'').trim();const m=raw.match(/BRK-\d{3,}/i);if(m){const input=$('clubQuickSearch');input.value=m[0].toUpperCase();input.dispatchEvent(new Event('input',{bubbles:true}));status.textContent='Socio encontrado: '+m[0].toUpperCase();setTimeout(closeScanner,450)}else status.textContent='QR detectado, pero no contiene un código BRK válido.'}}catch(e){}},350)}catch(e){status.textContent='No se pudo abrir la cámara. Revisa el permiso de cámara del navegador.'}
+            }
+            const observer=new MutationObserver(()=>{setupClub();enhance()});
+            document.addEventListener('DOMContentLoaded',()=>{setupClub();enhance();observer.observe(document.body,{subtree:true,childList:true})});
+          })();
+          </script>
+          '''
+          if 'club-premium-card' not in s:
+              s=s.replace('</body>', js+'\n</body>',1)
+          p.write_text(s,encoding='utf-8')
+          PY
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git diff --cached --quiet && exit 0
+          git commit -m "Club Brinky: tarjeta premium y escaneo QR"
+          git push
