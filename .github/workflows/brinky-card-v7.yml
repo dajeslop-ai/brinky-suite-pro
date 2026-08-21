@@ -1,0 +1,43 @@
+name: BRINKY card v7 patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'runtime-patch-v7.js'
+      - '.github/workflows/brinky-card-v7.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inject premium card patch into service worker
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('sw-core-v6.js')
+          s=p.read_text(encoding='utf-8')
+          old="""        if(r.ok)return await r.text();"""
+          new="""        if(r.ok){
+          const base=await r.text();
+          try{const r2=await fetch('./runtime-patch-v7.js',{cache:'no-store'});if(r2.ok)return base+'\\n'+await r2.text();}catch(e){}
+          return base;
+        }"""
+          if old not in s:
+            raise SystemExit('runtimePatchText target not found')
+          p.write_text(s.replace(old,new,1),encoding='utf-8')
+          sw=Path('sw.js')
+          t=sw.read_text(encoding='utf-8').replace('sw-core-v6.js?v=2.2.6','sw-core-v6.js?v=2.2.7')
+          sw.write_text(t,encoding='utf-8')
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add sw-core-v6.js sw.js
+          git commit -m 'Fix premium Club Brinky card rendering' || exit 0
+          git push
