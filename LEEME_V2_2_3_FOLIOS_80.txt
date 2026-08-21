@@ -1,0 +1,10 @@
+BRINKY FIESTA SUITE v2.2.3 BETA · FOLIOS DESDE 80
+
+CAMBIO PRINCIPAL
+- El siguiente contrato comienza en el número 80.
+- La siguiente cotización comienza en el número 80.
+- Formato de contrato: BF-AAAA-000080.
+- Formato de cotización: COT-AAAA-000080.
+- Si ya existe un folio 80 o superior en el historial recuperado, la app continúa con el siguiente número disponible para evitar duplicados.
+
+Se conserva la sincronización segura y los respaldos de la v2.2.2.

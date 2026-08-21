@@ -4,13 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#16a34a">
-  <title>BRINKY FIESTA SUITE · Android · Mensajes WhatsApp corregidos</title>
+  <title>BRINKY FIESTA SUITE · v2.2.3 · Folios desde 80</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="BRINKY FIESTA SUITE">
-  <link rel="stylesheet" href="styles.css?v=2.2.1">
+  <link rel="stylesheet" href="styles.css?v=2.2.3">
   <style>
     .app-note{background:#ecfdf3;border:1px solid #b7ebc9;color:#116b33;padding:12px 14px;border-radius:14px;font-size:.9rem;font-weight:700;margin:0 0 18px}
     .modal-actions .btn-new-contract{background:#7c3aed;color:#fff}
@@ -20,12 +20,12 @@
     @media(max-width:720px){.quick-grid{grid-template-columns:1fr 1fr}.saved-item{align-items:flex-start;flex-direction:column}.saved-actions{width:100%;justify-content:flex-start}.saved-actions .btn{flex:1}.modal-actions .btn{flex:1 1 45%}}
 
     .backup-card{border:2px solid #d8e9df;background:linear-gradient(135deg,#ffffff,#f3fff7)}
-    .backup-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:14px 0}
+    .backup-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}
     .backup-tile{border:1px solid #e2e8f0;border-radius:16px;padding:14px;background:#fff;min-height:112px}
     .backup-tile b{display:block;font-size:1rem;margin-bottom:5px}.backup-tile strong{display:block;font-size:1.05rem;color:#173a19}.backup-tile small{display:block;color:#667085;margin-top:5px;line-height:1.35}
     .backup-actions{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}.backup-actions .btn{min-width:180px}
     .cloud-config{margin-top:12px;border-top:1px solid #e5e7eb;padding-top:12px}.cloud-config summary{font-weight:800;cursor:pointer;color:#4c1d95}.cloud-config .grid{margin-top:12px}
-    .backup-ok{color:#08752f!important}.backup-warn{color:#a15c00!important}.backup-bad{color:#b42318!important}.backup-neutral{color:#667085!important}
+    .backup-ok{color:#08752f!important}.backup-warn{color:#a15c00!important}.backup-bad{color:#b42318!important}.backup-neutral{color:#667085!important}.backup-warn-note{background:#fff8e8;border-color:#f2c879;color:#855000!important}.sync-strong{font-weight:900}
     .backup-badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}.backup-pill{font-size:.72rem;font-weight:800;border-radius:999px;padding:3px 8px;background:#f2f4f7;color:#667085}.backup-pill.ok{background:#eaf8ef;color:#08752f}.backup-pill.pending{background:#fff4df;color:#9a5b00}.backup-pill.error{background:#feecec;color:#b42318}
     @media(max-width:760px){.backup-grid{grid-template-columns:1fr}.backup-actions .btn{flex:1 1 45%;min-width:0}}
 
@@ -49,7 +49,7 @@
 
 <main>
   <section id="homeView" class="view active">
-    <div class="welcome card"><div><span class="badge">Versión 2.2.1 BETA · Mensajes corregidos</span><h2>Tu operación Brinky en el teléfono</h2><p>Contratos, cotizaciones, Club Brinky, estadísticas, WhatsApp configurable y respaldo automático en nube.</p></div><img src="icons/icon-192.png" alt="Brinky"></div>
+    <div class="welcome card"><div><span class="badge">Versión 2.2.3 BETA · Folios desde 80</span><h2>Tu operación Brinky en el teléfono</h2><p>Contratos, cotizaciones, Club Brinky, estadísticas, WhatsApp configurable y respaldo automático en nube.</p></div><img src="icons/icon-192.png" alt="Brinky"></div>
     <div class="stats">
       <article class="stat card"><b id="statContracts">0</b><span>Contratos guardados</span></article>
       <article class="stat card"><b id="statUpcoming">0</b><span>Próximos eventos</span></article>
@@ -65,16 +65,22 @@
       <button class="quick" data-go="settings"><span>💬</span><b>Mensajes WhatsApp</b><small>Contrato, cotización y Club Brinky</small></button>
     </div></section>
     <section class="card backup-card" id="backupCard">
-      <div class="section-head"><div><span class="badge">Respaldo seguro</span><h3>Teléfono + nube</h3><p>En el teléfono, los datos permanecen dentro de la app y se respaldan en Supabase. La carpeta física queda disponible únicamente si abres esta versión desde una PC compatible.</p></div><span id="backupOverallBadge" class="installed">Configuración pendiente</span></div>
+      <div class="section-head"><div><span class="badge">Respaldo seguro</span><h3>Teléfono + nube</h3><p>En el teléfono, los datos permanecen dentro de la app y se respaldan en Supabase. La app conserva copia local y sincroniza con Supabase. v2.2.3 recupera la nube antes de subir cambios para evitar que una instalación vacía borre información.</p></div><span id="backupOverallBadge" class="installed">Configuración pendiente</span></div>
+      <div id="fileModeWarning" class="app-note backup-warn-note hidden">⚠️ Estás abriendo <b>index.html</b> como archivo local. Cada carpeta/versión puede tener almacenamiento distinto. Para uso permanente instala la app desde una misma dirección HTTPS; Supabase seguirá siendo la copia de recuperación.</div>
       <div class="backup-grid">
         <div class="backup-tile" id="localBackupTile"><b>📱 Dispositivo</b><strong id="localBackupStatus">Guardado interno</strong><small id="localBackupDetail">En Android los datos se conservan dentro de la aplicación. En PC puede autorizarse además una carpeta física.</small></div>
-        <div class="backup-tile"><b>☁️ Nube de respaldo</b><strong id="cloudBackupStatus">No conectada</strong><small id="cloudBackupDetail">Respaldo de una sola vía: la nube no sobrescribe automáticamente tus documentos locales.</small></div>
+        <div class="backup-tile"><b>☁️ Nube de respaldo</b><strong id="cloudBackupStatus">No conectada</strong><small id="cloudBackupDetail">Sincronización segura: primero recupera la nube y después respalda el estado combinado.</small></div>
         <div class="backup-tile"><b>⏳ Pendientes</b><strong id="pendingBackupCount">0</strong><small id="pendingBackupDetail">Documentos esperando completar uno o ambos respaldos.</small></div>
+        <div class="backup-tile"><b>🔄 Sincronización</b><strong id="cloudSyncStatus">Pendiente</strong><small id="cloudSyncDetail">Conecta Supabase para recuperar y sincronizar.</small></div>
       </div>
       <div class="backup-actions">
         <button type="button" id="chooseBackupFolder" class="btn btn-blue">Elegir carpeta local (PC)</button>
         <button type="button" id="retryBackups" class="btn btn-primary">Respaldar pendientes</button>
         <button type="button" id="backupAllNow" class="btn btn-light">Respaldar todo ahora</button>
+        <button type="button" id="recoverLocalFolder" class="btn btn-light">Recuperar carpeta (PC)</button>
+        <button type="button" id="exportFullBackup" class="btn btn-light">Exportar respaldo completo</button>
+        <button type="button" id="importFullBackup" class="btn btn-light">Importar respaldo completo</button>
+        <input id="importFullBackupFile" type="file" accept="application/json,.json" class="hidden">
       </div>
       <details class="cloud-config" id="cloudConfigDetails">
         <summary>Configurar nube (Supabase)</summary>
@@ -89,9 +95,9 @@
           <button type="button" id="cloudLoginBtn" class="btn btn-primary">Conectar nube</button>
           <button type="button" id="cloudSignupBtn" class="btn btn-light">Crear cuenta</button>
           <button type="button" id="cloudLogoutBtn" class="btn btn-light hidden">Cerrar sesión</button>
-          <button type="button" id="cloudRecoverBtn" class="btn btn-blue">Recuperar faltantes</button>
+          <button type="button" id="cloudRecoverBtn" class="btn btn-blue">Sincronizar ahora</button>
         </div>
-        <div id="cloudMessage" class="app-note">La nube todavía no está configurada. Sigue las instrucciones del archivo CONFIGURAR_RESPALDO_NUBE.sql incluido en esta versión.</div>
+        <div id="cloudMessage" class="app-note">La nube todavía no está configurada. Usa el mismo proyecto Supabase de las versiones anteriores. v2.2.3 no requiere una tabla nueva.</div>
       </details>
     </section>
 
@@ -269,7 +275,7 @@
   <section id="settingsView" class="view">
     <section class="card hero">
       <div><span class="badge">💬 Centro de mensajes</span><h2>Configuración de WhatsApp</h2><p>Recuperamos las plantillas del antiguo Club Brinky y las adaptamos a la nueva Suite móvil.</p></div>
-      <div class="folio"><strong>v2.2.1</strong></div>
+      <div class="folio"><strong>v2.2.3</strong></div>
     </section>
 
     <div class="whatsapp-visible-note">✓ Esta es la nueva sección. Aquí puedes editar los mensajes antes de compartirlos por WhatsApp.</div>
@@ -367,6 +373,6 @@
   </section>
 </div></div>
 
-<script src="app.js?v=2.0.1"></script>
+<script src="app.js?v=2.2.3"></script>
 </body>
 </html>

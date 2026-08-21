@@ -15,6 +15,13 @@ const LOYALTY_FOLIO_KEY='brinky_loyalty_folio_v2';
 const CLUB_CLOUD_PENDING_KEY='brinky_club_cloud_pending_v2';
 const EXPENSES_KEY='brinky_expenses_v1';
 const WHATSAPP_MESSAGES_KEY='brinky_whatsapp_messages_v1';
+const APP_VERSION='2.2.3';
+const DOCUMENT_FOLIO_START=80; // Contratos y cotizaciones comienzan en 80.
+const CLOUD_SYNC_META_KEY='brinky_cloud_sync_meta_v222';
+const DELETED_ITEMS_KEY='brinky_deleted_items_v222';
+let cloudBootstrapDone=false;
+let cloudBootstrapBusy=false;
+let masterSnapshotTimer=null;
 const DEFAULT_WHATSAPP_MESSAGES={
   contract:`Hola {cliente}, te compartimos tu contrato de Brinky Fiesta.
 
@@ -107,7 +114,7 @@ let clubTemplateDraft=null;
 function getClubMessageTemplates(){
   try{return {...DEFAULT_CLUB_TEMPLATES,...JSON.parse(localStorage.getItem(CLUB_TEMPLATES_KEY)||'{}')}}catch{return {...DEFAULT_CLUB_TEMPLATES}}
 }
-function setClubMessageTemplates(v){localStorage.setItem(CLUB_TEMPLATES_KEY,JSON.stringify({...DEFAULT_CLUB_TEMPLATES,...v}));localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');scheduleClubCloudBackup?.()}
+function setClubMessageTemplates(v){localStorage.setItem(CLUB_TEMPLATES_KEY,JSON.stringify({...DEFAULT_CLUB_TEMPLATES,...v}));localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');scheduleClubCloudBackup?.();scheduleMasterSnapshot?.()}
 function clubMessageVariables(c){
   const s=getLoyaltySettings(),stars=Math.max(0,Number(c?.stamps||0)),meta=Math.max(1,Number(s.r2||8));
   const filled='⭐'.repeat(Math.min(stars,meta)),empty='☆'.repeat(Math.max(0,meta-stars));
@@ -124,7 +131,7 @@ function suggestedClubMessageType(c){
 function getWhatsappMessages(){
   try{return {...DEFAULT_WHATSAPP_MESSAGES,...JSON.parse(localStorage.getItem(WHATSAPP_MESSAGES_KEY)||'{}')}}catch{return {...DEFAULT_WHATSAPP_MESSAGES}}
 }
-function setWhatsappMessages(v){localStorage.setItem(WHATSAPP_MESSAGES_KEY,JSON.stringify({...DEFAULT_WHATSAPP_MESSAGES,...v}));localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');scheduleClubCloudBackup?.()}
+function setWhatsappMessages(v){localStorage.setItem(WHATSAPP_MESSAGES_KEY,JSON.stringify({...DEFAULT_WHATSAPP_MESSAGES,...v}));localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');scheduleClubCloudBackup?.();scheduleMasterSnapshot?.()}
 function fillWhatsappTemplate(template,values={}){
   return String(template||'').replace(/\{([a-zA-Z0-9_]+)\}/g,(m,k)=>Object.prototype.hasOwnProperty.call(values,k)?String(values[k]??''):m).replace(/\n{3,}/g,'\n\n').trim();
 }
@@ -147,9 +154,10 @@ let editingCreatedAt='';
 let editingContractId='';
 
 
-// ==================== RESPALDO SEGURO v1.4 ====================
-// Diseño local-first: la app nunca depende de la nube para crear un documento.
-// La nube es SOLO respaldo de una vía. Nunca aplica cambios remotos automáticamente.
+// ==================== SINCRONIZACIÓN SEGURA v2.2.3 ====================
+// Diseño local-first + recuperación remota primero.
+// Regla crítica: al conectar Supabase, PRIMERO se recupera/combina la nube y DESPUÉS se sube el estado local.
+// Esto evita que una instalación vacía sobrescriba el respaldo del Club Brinky.
 const BACKUP_QUEUE_KEY='brinky_backup_queue_v1';
 const BACKUP_STATUS_KEY='brinky_backup_status_v1';
 const CLOUD_CONFIG_KEY='brinky_cloud_backup_config_v1';
@@ -160,6 +168,30 @@ const FS_ROOT_KEY='backupRoot';
 let backupRootHandle=null;
 let backupBusy=false;
 let backupTimer=null;
+
+
+function timeMs(v){const n=Date.parse(v||'');return Number.isFinite(n)?n:0}
+function getCloudSyncMeta(){try{return JSON.parse(localStorage.getItem(CLOUD_SYNC_META_KEY)||'{}')}catch{return{}}}
+function setCloudSyncMeta(patch){const v={...getCloudSyncMeta(),...patch};localStorage.setItem(CLOUD_SYNC_META_KEY,JSON.stringify(v));updateBackupUi();return v}
+function getDeletedItems(){try{const v=JSON.parse(localStorage.getItem(DELETED_ITEMS_KEY)||'{}');return{documents:Array.isArray(v.documents)?v.documents:[],members:Array.isArray(v.members)?v.members:[],expenses:Array.isArray(v.expenses)?v.expenses:[]}}catch{return{documents:[],members:[],expenses:[]}}}
+function setDeletedItems(v){localStorage.setItem(DELETED_ITEMS_KEY,JSON.stringify({documents:v.documents||[],members:v.members||[],expenses:v.expenses||[]}));localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');scheduleClubCloudBackup?.();scheduleMasterSnapshot()}
+function addDeletion(kind,id,type=''){if(!id)return;const d=getDeletedItems(),key=kind==='documents'?'documents':kind==='members'?'members':'expenses',arr=d[key];if(!arr.some(x=>String(x.id)===String(id)&&(key!=='documents'||x.type===type)))arr.push({id:String(id),...(key==='documents'?{type}:{}),deletedAt:new Date().toISOString()});setDeletedItems(d)}
+function isDocumentDeleted(type,id){return getDeletedItems().documents.some(x=>x.type===type&&String(x.id)===String(id))}
+function meaningfulLocalData(){return getContracts().length+getQuotes().length+getLoyalty().length+getExpenses().length>0}
+function documentStamp(d,fallback=''){return timeMs(d?.updatedAt||d?.createdAt||fallback)}
+function memberKey(c){return String(c?.id||c?.code||normalizedPhone(c?.phone)||'')}
+function mergeDocuments(localItems,remoteEntries,type){const deleted=getDeletedItems().documents.filter(x=>x.type===type),deletedIds=new Set(deleted.map(x=>String(x.id))),out=localItems.filter(x=>!deletedIds.has(String(x.id))),idx=new Map(out.map((x,i)=>[String(x.id),i]));let added=0,updated=0;for(const entry of remoteEntries){const r=entry?.payload||entry;if(!r?.id||deletedIds.has(String(r.id)))continue;const k=String(r.id),i=idx.get(k);if(i===undefined){out.push({...r,updatedAt:r.updatedAt||entry.updated_at||r.createdAt});idx.set(k,out.length-1);added++;continue}const l=out[i],rt=documentStamp(r,entry.updated_at),lt=documentStamp(l);if(rt>lt+1000){out[i]={...r,updatedAt:r.updatedAt||entry.updated_at||r.createdAt};updated++}}return{items:out,added,updated}}
+function mergeMembers(localItems,remoteItems,tombstones=[]){const deleted=new Set(tombstones.map(x=>String(x.id))),out=localItems.filter(c=>!deleted.has(String(c.id))),index=new Map();const addKeys=(c,i)=>{[c.id,c.code,normalizedPhone(c.phone)].filter(Boolean).forEach(k=>index.set(String(k).toUpperCase(),i))};out.forEach(addKeys);let added=0,updated=0;for(const r of remoteItems||[]){if(!r||deleted.has(String(r.id)))continue;const keys=[r.id,r.code,normalizedPhone(r.phone)].filter(Boolean).map(k=>String(k).toUpperCase());let i;for(const k of keys)if(index.has(k)){i=index.get(k);break}if(i===undefined){out.push(r);i=out.length-1;addKeys(r,i);added++;continue}const l=out[i];if(timeMs(r.updatedAt||r.createdAt)>timeMs(l.updatedAt||l.createdAt)+1000){out[i]=r;addKeys(r,i);updated++}}return{items:out,added,updated}}
+function mergeExpenses(localItems,remoteItems,tombstones=[]){const deleted=new Set(tombstones.map(x=>String(x.id))),out=localItems.filter(x=>!deleted.has(String(x.id))),ids=new Set(out.map(x=>String(x.id)));let added=0;for(const r of remoteItems||[]){if(!r?.id||deleted.has(String(r.id))||ids.has(String(r.id)))continue;out.push(r);ids.add(String(r.id));added++}return{items:out,added}}
+function mergeTombstones(localList=[],remoteList=[],isDoc=false){const out=[...localList],keys=new Set(out.map(x=>isDoc?`${x.type}:${x.id}`:String(x.id)));for(const r of remoteList||[]){const k=isDoc?`${r.type}:${r.id}`:String(r.id);if(!keys.has(k)){out.push(r);keys.add(k)}}return out}
+function fullSnapshot(){return{format:'BRINKY_FIESTA_SUITE_FULL_BACKUP_V2',version:APP_VERSION,exportedAt:new Date().toISOString(),contracts:getContracts(),quotes:getQuotes(),folioState:getFolioState(),capturePrefs:getCapturePrefs(),members:getLoyalty(),loyaltySettings:getLoyaltySettings(),loyaltyFolio:getLoyaltyFolioState(),expenses:getExpenses(),whatsappMessages:getWhatsappMessages(),clubTemplates:getClubMessageTemplates(),deletedItems:getDeletedItems(),cloudConfig:getCloudConfig()}}
+function scheduleMasterSnapshot(delay=900){clearTimeout(masterSnapshotTimer);masterSnapshotTimer=setTimeout(()=>writeMasterSnapshotToFolder().catch(()=>{}),delay)}
+async function writeMasterSnapshotToFolder(){if(!backupRootHandle||!(await ensureBackupRootPermission(false)))return false;const blob=new Blob([JSON.stringify(fullSnapshot(),null,2)],{type:'application/json'});await writeHandleFile(backupRootHandle,'BRINKY_FIESTA_SUITE_RESPALDO_COMPLETO.json',blob);return true}
+function downloadFullBackup(){const snap=fullSnapshot(),blob=new Blob([JSON.stringify(snap,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a'),d=new Date(),pad=n=>String(n).padStart(2,'0');a.href=url;a.download=`BRINKY_FIESTA_RESPALDO_COMPLETO_${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)}
+function applyFullSnapshot(snap,{preferImportedSettings=true}={}){if(!snap||!Array.isArray(snap.contracts)||!Array.isArray(snap.quotes))throw new Error('El archivo no parece ser un respaldo completo válido.');const dLocal=getDeletedItems(),dRemote=snap.deletedItems||{},mergedDeleted={documents:mergeTombstones(dLocal.documents,dRemote.documents||[],true),members:mergeTombstones(dLocal.members,dRemote.members||[]),expenses:mergeTombstones(dLocal.expenses,dRemote.expenses||[])};localStorage.setItem(DELETED_ITEMS_KEY,JSON.stringify(mergedDeleted));const mc=mergeDocuments(getContracts(),snap.contracts.map(payload=>({payload,updated_at:payload.updatedAt||payload.createdAt})),'contract'),mq=mergeDocuments(getQuotes(),snap.quotes.map(payload=>({payload,updated_at:payload.updatedAt||payload.createdAt})),'quote'),mm=mergeMembers(getLoyalty(),snap.members||[],mergedDeleted.members),me=mergeExpenses(getExpenses(),snap.expenses||[],mergedDeleted.expenses);localStorage.setItem(STORAGE_KEY,JSON.stringify(mc.items));localStorage.setItem(QUOTES_KEY,JSON.stringify(mq.items));localStorage.setItem(LOYALTY_KEY,JSON.stringify(mm.items));localStorage.setItem(EXPENSES_KEY,JSON.stringify(me.items));if(preferImportedSettings){if(snap.loyaltySettings)localStorage.setItem(LOYALTY_SETTINGS_KEY,JSON.stringify(snap.loyaltySettings));if(snap.whatsappMessages)localStorage.setItem(WHATSAPP_MESSAGES_KEY,JSON.stringify({...DEFAULT_WHATSAPP_MESSAGES,...snap.whatsappMessages}));if(snap.clubTemplates)localStorage.setItem(CLUB_TEMPLATES_KEY,JSON.stringify({...DEFAULT_CLUB_TEMPLATES,...snap.clubTemplates}));if(snap.capturePrefs)localStorage.setItem(CAPTURE_PREFS_KEY,JSON.stringify(snap.capturePrefs));if(snap.cloudConfig?.url&&snap.cloudConfig?.anonKey)setCloudConfig(snap.cloudConfig)}if(snap.folioState){const cur=getFolioState(),imp=snap.folioState;for(const type of ['contracts','quotes'])for(const [y,n] of Object.entries(imp[type]||{})){cur[type]=cur[type]||{};cur[type][y]=Math.max(Number(cur[type][y]||0),Number(n||0))}setFolioState(cur)}if(snap.loyaltyFolio)localStorage.setItem(LOYALTY_FOLIO_KEY,String(Math.max(getLoyaltyFolioState(),Number(snap.loyaltyFolio||0))));syncFolioHistory();syncLoyaltyFolioState();localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');renderDashboard();renderSaved();renderQuotes();renderLoyalty();if($('reportMonth'))renderReports();updateServiceAvailability();queueAllCurrentDocuments(true);scheduleBackupProcessing(200);scheduleClubCloudBackup(600);scheduleMasterSnapshot();return{contracts:mc.added,quotes:mq.added,members:mm.added,expenses:me.added}}
+async function importFullBackupFile(file){const text=await file.text(),snap=JSON.parse(text);if(!confirm('Se combinará este respaldo con los datos actuales. No se borrarán registros actuales. ¿Continuar?'))return;const r=applyFullSnapshot(snap,{preferImportedSettings:true});alert(`Respaldo importado.\nContratos agregados: ${r.contracts}\nCotizaciones agregadas: ${r.quotes}\nSocios agregados: ${r.members}\nGastos agregados: ${r.expenses}`);if(cloudIsConnected())synchronizeCloudFirst({showAlert:false}).catch(()=>{})}
+async function tryRestoreMasterSnapshotFromFolder(){if(!backupRootHandle||meaningfulLocalData())return false;try{const fh=await backupRootHandle.getFileHandle('BRINKY_FIESTA_SUITE_RESPALDO_COMPLETO.json'),file=await fh.getFile(),snap=JSON.parse(await file.text());if(!snap?.contracts)return false;if(confirm('Encontré un respaldo completo en esta carpeta. Esta instalación está vacía. ¿Recuperar ahora contratos, Club Brinky y configuración?')){applyFullSnapshot(snap,{preferImportedSettings:true});return true}}catch{}return false}
+async function recoverDocumentsFromBackupFolder(){if(!backupRootHandle){alert('Primero pulsa “Elegir carpeta local (PC)” y selecciona tu carpeta de respaldos Brinky Suite.');return}if(!(await ensureBackupRootPermission(true))){alert('No se concedió acceso a la carpeta.');return}let contracts=[],quotes=[];for(const [folder,type,target] of [['Contratos','contract',contracts],['Cotizaciones','quote',quotes]]){let root;try{root=await backupRootHandle.getDirectoryHandle(folder)}catch{continue}for await(const entry of root.values()){if(entry.kind!=='directory')continue;let dataDir;try{dataDir=await entry.getDirectoryHandle('Datos')}catch{continue}for await(const f of dataDir.values()){if(f.kind!=='file'||!f.name.toLowerCase().endsWith('.json'))continue;try{const file=await f.getFile(),obj=JSON.parse(await file.text());if(obj?.data?.id)target.push(obj.data)}catch{}}} }const snap={contracts,quotes,members:[],expenses:[],deletedItems:{},format:'LOCAL_FOLDER_RECOVERY'};const r=applyFullSnapshot(snap,{preferImportedSettings:false});alert(`Recuperación desde carpeta terminada.\nContratos agregados: ${r.contracts}\nCotizaciones agregadas: ${r.quotes}`)}
 
 function getBackupQueue(){try{return JSON.parse(localStorage.getItem(BACKUP_QUEUE_KEY)||'[]')}catch{return[]}}
 function setBackupQueue(items){localStorage.setItem(BACKUP_QUEUE_KEY,JSON.stringify(items));updateBackupUi()}
@@ -202,8 +234,8 @@ async function chooseBackupFolder(){
   try{
     const h=await window.showDirectoryPicker({id:'brinky-fiesta-suite-backup',mode:'readwrite'});
     const permission=await handlePermission(h,true);if(permission!=='granted')throw new Error('No se concedió permiso de escritura.');
-    backupRootHandle=h;await storeFsHandle(FS_ROOT_KEY,h);queueAllCurrentDocuments(true);updateBackupUi();await processBackupQueue();
-    alert(`Carpeta local configurada: ${h.name}.\n\nLa app creará automáticamente las subcarpetas Contratos y Cotizaciones por año.`);
+    backupRootHandle=h;await storeFsHandle(FS_ROOT_KEY,h);await tryRestoreMasterSnapshotFromFolder();queueAllCurrentDocuments(true);updateBackupUi();await processBackupQueue();await writeMasterSnapshotToFolder().catch(()=>{});
+    alert(`Carpeta local configurada: ${h.name}.\n\nAdemás de PDF + JSON, v2.2.3 guardará un respaldo completo de la Suite en esta carpeta.`);
   }catch(err){if(err?.name!=='AbortError')alert('No se pudo configurar la carpeta local: '+(err?.message||err));updateBackupUi()}
 }
 async function ensureBackupRootPermission(request=false){if(!backupRootHandle)return false;return (await handlePermission(backupRootHandle,request))==='granted'}
@@ -244,18 +276,22 @@ function readCloudConfigForm(){return{url:normalizeCloudUrl($('cloudProjectUrl')
 function persistCloudForm(){const c=readCloudConfigForm();if(!c.url||!c.anonKey)throw new Error('Completa Project URL y Anon / Publishable key.');setCloudConfig(c);return c}
 async function cloudLogin(){
   const btn=$('cloudLoginBtn'),old=btn.textContent;btn.disabled=true;btn.textContent='Conectando…';
-  try{const c=persistCloudForm(),password=$('cloudPassword').value;if(!c.email||!password)throw new Error('Completa correo y contraseña.');const data=await cloudAuthFetch('/auth/v1/token?grant_type=password',{email:c.email,password});const session=normalizeCloudSession(data);if(!session)throw new Error('Supabase no devolvió una sesión.');setCloudSession(session);$('cloudPassword').value='';queueAllCurrentDocuments(true);updateBackupUi();await processBackupQueue();await backupClubToCloud().catch(()=>{});setCloudMessage('Nube conectada. Los documentos pendientes se están respaldando automáticamente.','ok')}
+  try{const c=persistCloudForm(),password=$('cloudPassword').value;if(!c.email||!password)throw new Error('Completa correo y contraseña.');const data=await cloudAuthFetch('/auth/v1/token?grant_type=password',{email:c.email,password});const session=normalizeCloudSession(data);if(!session)throw new Error('Supabase no devolvió una sesión.');setCloudSession(session);cloudBootstrapDone=false;$('cloudPassword').value='';updateBackupUi();setCloudMessage('Conectado. Recuperando primero la información de la nube…','warn');await synchronizeCloudFirst({showAlert:false});setCloudMessage('Nube sincronizada. Primero se recuperó la información y después se respaldó el estado combinado.','ok')}
   catch(err){setCloudMessage('No se pudo conectar: '+(err?.message||err),'error')}
   finally{btn.disabled=false;btn.textContent=old}
 }
 async function cloudSignup(){
   const btn=$('cloudSignupBtn'),old=btn.textContent;btn.disabled=true;btn.textContent='Creando…';
-  try{const c=persistCloudForm(),password=$('cloudPassword').value;if(!c.email||!password)throw new Error('Completa correo y contraseña.');const data=await cloudAuthFetch('/auth/v1/signup',{email:c.email,password});const session=normalizeCloudSession(data);if(session){setCloudSession(session);queueAllCurrentDocuments(true);await processBackupQueue();await backupClubToCloud().catch(()=>{});setCloudMessage('Cuenta creada y nube conectada.','ok')}else setCloudMessage('Cuenta creada. Revisa tu correo para confirmar la cuenta y después pulsa Conectar nube.','warn')}
+  try{const c=persistCloudForm(),password=$('cloudPassword').value;if(!c.email||!password)throw new Error('Completa correo y contraseña.');const data=await cloudAuthFetch('/auth/v1/signup',{email:c.email,password});const session=normalizeCloudSession(data);if(session){setCloudSession(session);cloudBootstrapDone=false;await synchronizeCloudFirst({showAlert:false});setCloudMessage('Cuenta creada y sincronizada.','ok')}else setCloudMessage('Cuenta creada. Revisa tu correo para confirmar la cuenta y después pulsa Conectar nube.','warn')}
   catch(err){setCloudMessage('No se pudo crear la cuenta: '+(err?.message||err),'error')}
   finally{btn.disabled=false;btn.textContent=old}
 }
-function cloudLogout(){setCloudSession(null);setCloudMessage('Sesión de nube cerrada. Tus copias ya subidas no se eliminan.','warn');updateBackupUi()}
+function cloudLogout(){cloudBootstrapDone=false;setCloudSession(null);setCloudMessage('Sesión de nube cerrada. Tus copias ya subidas no se eliminan.','warn');updateBackupUi()}
 function setCloudMessage(text,type='neutral'){const el=$('cloudMessage');if(!el)return;el.textContent=text;el.className='app-note '+(type==='ok'?'backup-ok':type==='error'?'backup-bad':type==='warn'?'backup-warn':'backup-neutral')}
+
+async function pullClubStateFromCloud(){const r=await cloudFetch('/rest/v1/brinky_club_backups?select=payload,updated_at&limit=1'),rows=await r.json(),row=rows?.[0],remote=row?.payload;if(!remote)return{hadRemote:false,membersAdded:0,expensesAdded:0};const localDeleted=getDeletedItems(),remoteDeleted=remote.deletedItems||{},deleted={documents:mergeTombstones(localDeleted.documents,remoteDeleted.documents||[],true),members:mergeTombstones(localDeleted.members,remoteDeleted.members||[]),expenses:mergeTombstones(localDeleted.expenses,remoteDeleted.expenses||[])};localStorage.setItem(DELETED_ITEMS_KEY,JSON.stringify(deleted));const localMembers=getLoyalty(),localExpenses=getExpenses(),fresh=!meaningfulLocalData(),pending=localStorage.getItem(CLUB_CLOUD_PENDING_KEY)==='1',mm=mergeMembers(localMembers,remote.members||[],deleted.members),me=mergeExpenses(localExpenses,remote.expenses||[],deleted.expenses);localStorage.setItem(LOYALTY_KEY,JSON.stringify(mm.items));localStorage.setItem(EXPENSES_KEY,JSON.stringify(me.items));if(fresh||!pending){if(remote.settings)localStorage.setItem(LOYALTY_SETTINGS_KEY,JSON.stringify(remote.settings));if(remote.whatsappMessages)localStorage.setItem(WHATSAPP_MESSAGES_KEY,JSON.stringify({...DEFAULT_WHATSAPP_MESSAGES,...remote.whatsappMessages}));if(remote.clubTemplates)localStorage.setItem(CLUB_TEMPLATES_KEY,JSON.stringify({...DEFAULT_CLUB_TEMPLATES,...remote.clubTemplates}));if(remote.capturePrefs)localStorage.setItem(CAPTURE_PREFS_KEY,JSON.stringify(remote.capturePrefs))}if(remote.folio){localStorage.setItem(LOYALTY_FOLIO_KEY,String(Math.max(getLoyaltyFolioState(),Number(remote.folio||0))))}if(remote.folioState){const cur=getFolioState();for(const type of ['contracts','quotes'])for(const [y,n] of Object.entries(remote.folioState[type]||{})){cur[type]=cur[type]||{};cur[type][y]=Math.max(Number(cur[type][y]||0),Number(n||0))}setFolioState(cur)}renderLoyalty();if($('reportMonth'))renderReports();return{hadRemote:true,membersAdded:mm.added,membersUpdated:mm.updated,expensesAdded:me.added,remoteUpdatedAt:row.updated_at}}
+async function pullDocumentsFromCloud(){const r=await cloudFetch('/rest/v1/brinky_document_backups?select=document_id,document_type,payload,updated_at&order=updated_at.asc'),rows=await r.json(),cRows=(rows||[]).filter(x=>x.document_type==='contract'),qRows=(rows||[]).filter(x=>x.document_type==='quote'),mc=mergeDocuments(getContracts(),cRows,'contract'),mq=mergeDocuments(getQuotes(),qRows,'quote');localStorage.setItem(STORAGE_KEY,JSON.stringify(mc.items));localStorage.setItem(QUOTES_KEY,JSON.stringify(mq.items));renderSaved();renderQuotes();renderDashboard();updateServiceAvailability();if($('reportMonth'))renderReports();return{contractsAdded:mc.added,contractsUpdated:mc.updated,quotesAdded:mq.added,quotesUpdated:mq.updated}}
+async function synchronizeCloudFirst({showAlert=false}={}){if(!cloudIsConnected())throw new Error('Conecta primero la nube.');if(cloudBootstrapBusy)return false;cloudBootstrapBusy=true;cloudBootstrapDone=false;updateBackupUi();setCloudMessage('Sincronizando: primero recuperamos la nube para evitar pérdidas…','warn');try{const club=await pullClubStateFromCloud();const docs=await pullDocumentsFromCloud();syncFolioHistory();syncLoyaltyFolioState();cloudBootstrapDone=true;queueAllCurrentDocuments(true);await processBackupQueue();localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');await backupClubToCloud({allowBeforeBootstrap:true});const meta=setCloudSyncMeta({lastSyncAt:new Date().toISOString(),lastError:'',lastContracts:getContracts().length,lastQuotes:getQuotes().length,lastMembers:getLoyalty().length});await writeMasterSnapshotToFolder().catch(()=>{});renderDashboard();renderSaved();renderQuotes();renderLoyalty();updateBackupUi();setCloudMessage(`Sincronizado: ${getContracts().length} contratos · ${getQuotes().length} cotizaciones · ${getLoyalty().length} socios.`,'ok');if(showAlert)alert(`Sincronización terminada.\nContratos: ${getContracts().length}\nCotizaciones: ${getQuotes().length}\nSocios Club Brinky: ${getLoyalty().length}\n\nLa nube se leyó antes de subir cambios locales.`);return{club,docs,meta}}catch(err){cloudBootstrapDone=false;setCloudSyncMeta({lastError:err?.message||String(err)});setCloudMessage('Error de sincronización: '+(err?.message||err),'error');updateBackupUi();throw err}finally{cloudBootstrapBusy=false;updateBackupUi()}}
 async function backupDocumentToCloud(type,data,pdfFile){
   if(!navigator.onLine)throw Object.assign(new Error('Sin conexión a Internet.'),{code:'OFFLINE'});
   const session=await ensureCloudSession();if(!session?.user?.id)throw new Error('Nube no conectada.');
@@ -294,35 +330,27 @@ async function processBackupQueue(){
 }
 async function backupAllNow(requestFolderPermission=false){
   if(backupRootHandle&&requestFolderPermission)await ensureBackupRootPermission(true);
-  queueAllCurrentDocuments(true);await processBackupQueue();
+  if(cloudIsConnected()&&!cloudBootstrapDone)await synchronizeCloudFirst({showAlert:false});
+  queueAllCurrentDocuments(true);await processBackupQueue();await backupClubToCloud().catch(()=>{});await writeMasterSnapshotToFolder().catch(()=>{});
 }
-async function recoverMissingFromCloud(){
-  const btn=$('cloudRecoverBtn'),old=btn.textContent;btn.disabled=true;btn.textContent='Recuperando…';
-  try{
-    if(!cloudIsConnected())throw new Error('Conecta primero la nube.');
-    const r=await cloudFetch('/rest/v1/brinky_document_backups?select=document_id,document_type,payload,updated_at&order=updated_at.asc');const rows=await r.json();
-    const contracts=getContracts(),quotes=getQuotes(),cids=new Set(contracts.map(x=>x.id)),qids=new Set(quotes.map(x=>x.id));let addedC=0,addedQ=0;
-    for(const row of rows||[]){if(row.document_type==='contract'&&!cids.has(row.document_id)){contracts.push(row.payload);cids.add(row.document_id);addedC++}else if(row.document_type==='quote'&&!qids.has(row.document_id)){quotes.push(row.payload);qids.add(row.document_id);addedQ++}}
-    if(addedC)setContracts(contracts.sort((a,b)=>String(b.id).localeCompare(String(a.id))));if(addedQ)setQuotes(quotes.sort((a,b)=>String(b.id).localeCompare(String(a.id))));syncFolioHistory();queueAllCurrentDocuments();await processBackupQueue();
-    alert(`Recuperación terminada.\nContratos recuperados: ${addedC}\nCotizaciones recuperadas: ${addedQ}\n\nLos documentos que ya existían localmente NO fueron sobrescritos.`);
-  }catch(err){alert('No se pudo recuperar desde la nube: '+(err?.message||err))}finally{btn.disabled=false;btn.textContent=old}
-}
+async function recoverMissingFromCloud(){const btn=$('cloudRecoverBtn'),old=btn?.textContent;if(btn){btn.disabled=true;btn.textContent='Sincronizando…'}try{await synchronizeCloudFirst({showAlert:true})}catch(err){alert('No se pudo sincronizar desde la nube: '+(err?.message||err))}finally{if(btn){btn.disabled=false;btn.textContent=old}}}
 function updateBackupUi(){
   const localStatus=$('localBackupStatus'),localDetail=$('localBackupDetail'),cloudStatus=$('cloudBackupStatus'),cloudDetail=$('cloudBackupDetail'),pending=$('pendingBackupCount'),pendingDetail=$('pendingBackupDetail'),overall=$('backupOverallBadge');if(!localStatus)return;
   if(IS_MOBILE_DEVICE){
     localStatus.textContent='Guardado interno';localStatus.className='backup-ok';
-    localDetail.textContent='Este teléfono conserva los datos dentro de la app. El respaldo externo se realiza en Supabase.';
+    localDetail.textContent='Guardado local activo. La recuperación entre versiones depende de usar la misma URL HTTPS/PWA o de Supabase.';
     $('chooseBackupFolder')?.classList.add('mobile-hidden');$('localBackupTile')?.classList.remove('mobile-hidden');
   }else if(!window.showDirectoryPicker){localStatus.textContent='No compatible';localStatus.className='backup-bad';localDetail.textContent='Usa Edge o Chrome actualizado para elegir una carpeta automática.'}
   else if(backupRootHandle){localStatus.textContent='Configurada';localStatus.className='backup-ok';localDetail.textContent=`Carpeta autorizada: ${backupRootHandle.name}. Se guardan PDF + JSON por año.`}
   else{localStatus.textContent='No configurada';localStatus.className='backup-warn';localDetail.textContent='Pulsa “Elegir carpeta local” y selecciona dónde conservar los respaldos.'}
   const c=getCloudConfig(),ss=getCloudSession();
-  if(cloudIsConnected()){cloudStatus.textContent='Conectada';cloudStatus.className='backup-ok';cloudDetail.textContent=`Cuenta: ${ss?.user?.email||c.email||'autenticada'} · respaldo automático.`}
+  if(cloudIsConnected()){cloudStatus.textContent=cloudBootstrapDone?'Conectada y sincronizada':'Conectada · verificando';cloudStatus.className=cloudBootstrapDone?'backup-ok':'backup-warn';cloudDetail.textContent=cloudBootstrapDone?`Cuenta: ${ss?.user?.email||c.email||'autenticada'} · recuperación + respaldo automático.`:'Antes de subir nada, v2.2.3 recuperará la nube.'}
   else if(c.url&&c.anonKey){cloudStatus.textContent='Configurada, sin sesión';cloudStatus.className='backup-warn';cloudDetail.textContent='Pulsa “Conectar nube” para activar el respaldo automático.'}
   else{cloudStatus.textContent='No configurada';cloudStatus.className='backup-warn';cloudDetail.textContent='Configura Supabase una sola vez para conservar una copia fuera del teléfono.'}
   const n=getBackupQueue().length;pending.textContent=String(n);pending.className=n?'backup-warn':'backup-ok';pendingDetail.textContent=n?'Hay documentos esperando completar el respaldo en nube.':'Todos los documentos pendientes de la cola están protegidos.';
+  const syncStatus=$('cloudSyncStatus'),syncDetail=$('cloudSyncDetail'),meta=getCloudSyncMeta();if(syncStatus){if(cloudBootstrapBusy){syncStatus.textContent='Sincronizando…';syncStatus.className='backup-warn';syncDetail.textContent='Leyendo nube antes de subir cambios.'}else if(cloudIsConnected()&&cloudBootstrapDone){syncStatus.textContent='Al día';syncStatus.className='backup-ok';syncDetail.textContent=meta.lastSyncAt?`Última sincronización: ${new Date(meta.lastSyncAt).toLocaleString('es-MX')}`:'Sincronización lista.'}else if(meta.lastError){syncStatus.textContent='Revisar';syncStatus.className='backup-bad';syncDetail.textContent=meta.lastError}else{syncStatus.textContent='Pendiente';syncStatus.className='backup-warn';syncDetail.textContent=location.protocol==='file:'?'Abre desde HTTPS/PWA para mantener un origen estable entre versiones.':'Conecta Supabase para sincronizar.'}}
   const localReady=IS_MOBILE_DEVICE||Boolean(backupRootHandle);
-  if(localReady&&cloudIsConnected()&&!n){overall.textContent='✓ Protegido';overall.className='installed backup-ok'}else if(localReady||cloudIsConnected()){overall.textContent=n?`${n} pendiente${n===1?'':'s'}`:'Protección parcial';overall.className='installed backup-warn'}else{overall.textContent='Configuración pendiente';overall.className='installed backup-warn'}
+  if(localReady&&cloudIsConnected()&&cloudBootstrapDone&&!n){overall.textContent='✓ Protegido';overall.className='installed backup-ok'}else if(localReady||cloudIsConnected()){overall.textContent=n?`${n} pendiente${n===1?'':'s'}`:'Protección parcial';overall.className='installed backup-warn'}else{overall.textContent='Configuración pendiente';overall.className='installed backup-warn'}
   if($('cloudLogoutBtn'))$('cloudLogoutBtn').classList.toggle('hidden',!cloudIsConnected());
   updateClubCloudBadge();
 }
@@ -333,8 +361,10 @@ async function initBackupSystem(){
   $('retryBackups')?.addEventListener('click',async()=>{if(backupRootHandle)await ensureBackupRootPermission(true);await backupAllNow(false)});
   $('backupAllNow')?.addEventListener('click',async()=>{if(backupRootHandle)await ensureBackupRootPermission(true);await backupAllNow(false)});
   $('cloudLoginBtn')?.addEventListener('click',cloudLogin);$('cloudSignupBtn')?.addEventListener('click',cloudSignup);$('cloudLogoutBtn')?.addEventListener('click',cloudLogout);$('cloudRecoverBtn')?.addEventListener('click',recoverMissingFromCloud);
-  window.addEventListener('online',()=>{scheduleBackupProcessing(250);backupClubToCloud().catch(()=>{})});
-  updateBackupUi();scheduleBackupProcessing(700);
+  $('exportFullBackup')?.addEventListener('click',downloadFullBackup);$('importFullBackup')?.addEventListener('click',()=>$('importFullBackupFile')?.click());$('importFullBackupFile')?.addEventListener('change',async e=>{const f=e.target.files?.[0];if(f)try{await importFullBackupFile(f)}catch(err){alert('No se pudo importar el respaldo: '+(err?.message||err))}finally{e.target.value=''}});$('recoverLocalFolder')?.addEventListener('click',recoverDocumentsFromBackupFolder);
+  if($('fileModeWarning'))$('fileModeWarning').classList.toggle('hidden',location.protocol!=='file:');
+  window.addEventListener('online',()=>{if(cloudIsConnected())synchronizeCloudFirst({showAlert:false}).catch(()=>{});else scheduleBackupProcessing(250)});
+  updateBackupUi();if(cloudIsConnected())await synchronizeCloudFirst({showAlert:false}).catch(()=>{});else scheduleBackupProcessing(700);
 }
 
 function escapeHtml(s=''){
@@ -355,7 +385,7 @@ function migrateLegacyIfAvailable(){
   }
 }
 function getContracts(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY))||[]}catch{return[]}}
-function setContracts(items){localStorage.setItem(STORAGE_KEY,JSON.stringify(items));renderSaved();renderDashboard();updateServiceAvailability();if($('reportMonth'))renderReports()}
+function setContracts(items){localStorage.setItem(STORAGE_KEY,JSON.stringify(items));renderSaved();renderDashboard();updateServiceAvailability();if($('reportMonth'))renderReports();scheduleMasterSnapshot()}
 
 // Folios históricos: una vez utilizado un número, nunca vuelve a liberarse aunque se elimine el documento.
 function getFolioState(){
@@ -384,7 +414,10 @@ function syncFolioHistory(){
 function nextHistoricalFolio(type,prefix){
   const y=String(new Date().getFullYear()),state=getFolioState();
   const highest=Number((state[type]||{})[y]||0);
-  return `${prefix}-${y}-${String(highest+1).padStart(6,'0')}`;
+  // Reinicio solicitado: el primer folio disponible nunca será menor a 80.
+  // Si ya existen folios 80 o superiores, continúa con el siguiente para evitar duplicados.
+  const next=Math.max(highest+1,DOCUMENT_FOLIO_START);
+  return `${prefix}-${y}-${String(next).padStart(6,'0')}`;
 }
 function saveContract(data){
   const items=getContracts();
@@ -396,7 +429,7 @@ function saveContract(data){
 function contractId(){return nextHistoricalFolio('contracts','BF')}
 
 function getCapturePrefs(){try{return JSON.parse(localStorage.getItem(CAPTURE_PREFS_KEY)||'{}')}catch{return{}}}
-function saveCapturePrefs(patch){localStorage.setItem(CAPTURE_PREFS_KEY,JSON.stringify({...getCapturePrefs(),...patch}))}
+function saveCapturePrefs(patch){localStorage.setItem(CAPTURE_PREFS_KEY,JSON.stringify({...getCapturePrefs(),...patch}));scheduleMasterSnapshot()}
 function rememberContractPreferences(){
   // v1.3: no conservar datos del documento anterior como preferencias.
   // Un contrato nuevo siempre inicia limpio para evitar datos "pegados".
@@ -649,7 +682,7 @@ function renderDashboard(){
   $('upcomingList').innerHTML=upcoming.length?upcoming.slice(0,5).map(d=>`<div class="upcoming-item"><div><strong>${escapeHtml(d.clientName)}</strong><div class="saved-meta">${dateFmt(d.eventDate)} · ${d.startTime||''} · ${escapeHtml((d.services&&d.services[0]?.name)||'Evento')}</div></div><button class="btn btn-light" onclick="openSaved('${d.id}')">Ver</button></div>`).join(''):'<div class="empty">No hay próximos eventos registrados.</div>';
 }
 window.openSaved=id=>{const d=getContracts().find(x=>x.id===id);if(d)renderPreview(d)};
-window.deleteSaved=id=>{if(confirm('¿Eliminar este contrato?'))setContracts(getContracts().filter(x=>x.id!==id))};
+window.deleteSaved=id=>{if(confirm('¿Eliminar este contrato?')){addDeletion('documents',id,'contract');setContracts(getContracts().filter(x=>x.id!==id));localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1')}};
 window.editSaved=id=>{const d=getContracts().find(x=>x.id===id);if(d)loadContractIntoForm(d)};
 
 function loadContractIntoForm(d){
@@ -818,7 +851,7 @@ let currentQuote=null;
 let lastQuoteClientLookup='';
 
 function getQuotes(){try{return JSON.parse(localStorage.getItem(QUOTES_KEY))||[]}catch{return[]}}
-function setQuotes(items){localStorage.setItem(QUOTES_KEY,JSON.stringify(items));renderQuotes()}
+function setQuotes(items){localStorage.setItem(QUOTES_KEY,JSON.stringify(items));renderQuotes();scheduleMasterSnapshot()}
 function quoteId(){return nextHistoricalFolio('quotes','COT')}
 function hideQuoteLookup(){const el=$('quoteClientLookup');if(!el)return;el.textContent='';el.className='client-lookup hidden'}
 function lookupQuoteClient(){
@@ -871,8 +904,8 @@ function validateQuoteRules(){
 function quoteExpiry(createdAt,days){const d=new Date(createdAt||Date.now());d.setDate(d.getDate()+Number(days||7));return d.toISOString().slice(0,10)}
 function effectiveQuoteStatus(q){if(q.status==='Convertida'||q.status==='Aceptada'||q.status==='Rechazada')return q.status;return q.expiresAt&&new Date(q.expiresAt+'T23:59:59')<new Date()?'Vencida':(q.status||'Pendiente')}
 function collectQuote(){
-  const createdAt=new Date().toISOString(),validity=Number($('quoteValidity').value||7);
-  return{id:$('quoteNumber').textContent,createdAt,clientName:$('quoteClientName').value.trim(),clientPhone:$('quoteClientPhone').value.trim(),eventAddress:$('quoteAddress').value.trim(),eventDate:$('quoteEventDate').value,validityDays:validity,expiresAt:quoteExpiry(createdAt,validity),status:$('quoteStatus').value,services:getQuoteServices(),subtotal:Number($('quoteSubtotal').value||0),discount:Number($('quoteDiscount').value||0),total:Number($('quoteTotal').value||0),notes:$('quoteNotes').value.trim()};
+  const id=$('quoteNumber').textContent,old=getQuotes().find(x=>x.id===id),now=new Date().toISOString(),createdAt=old?.createdAt||now,validity=Number($('quoteValidity').value||7);
+  return{id,createdAt,updatedAt:now,clientName:$('quoteClientName').value.trim(),clientPhone:$('quoteClientPhone').value.trim(),eventAddress:$('quoteAddress').value.trim(),eventDate:$('quoteEventDate').value,validityDays:validity,expiresAt:quoteExpiry(createdAt,validity),status:$('quoteStatus').value,services:getQuoteServices(),subtotal:Number($('quoteSubtotal').value||0),discount:Number($('quoteDiscount').value||0),total:Number($('quoteTotal').value||0),notes:$('quoteNotes').value.trim()};
 }
 function saveQuote(q){const items=getQuotes(),i=items.findIndex(x=>x.id===q.id);if(i>=0)items[i]=q;else{markFolioUsed('quotes',q.id,'COT');items.unshift(q)}setQuotes(items);enqueueDocumentBackup('quote',q)}
 function resetQuoteForm(){
@@ -896,14 +929,14 @@ function renderQuotePreview(q){
   $('quotePreviewModal').classList.remove('hidden');
 }
 window.openQuote=id=>{const q=getQuotes().find(x=>x.id===id);if(q)renderQuotePreview(q)};
-window.deleteQuote=id=>{if(confirm('¿Eliminar esta cotización?'))setQuotes(getQuotes().filter(x=>x.id!==id))};
+window.deleteQuote=id=>{if(confirm('¿Eliminar esta cotización?')){addDeletion('documents',id,'quote');setQuotes(getQuotes().filter(x=>x.id!==id));localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1')}};
 function convertQuoteToContract(q){
   if(!q)return;
   $('quotePreviewModal').classList.add('hidden');resetForNewContract();
   $('clientName').value=q.clientName||'';$('clientPhone').value=q.clientPhone||'';$('eventAddress').value=q.eventAddress||'';$('eventDate').value=q.eventDate||'';
   servicesList.innerHTML='';(q.services||[]).forEach(s=>addService(s));if(!(q.services||[]).length)addService({name:'',qty:1,duration:'4',price:0});
   $('notes').value=`Convertido desde ${q.id}${q.notes?' · '+q.notes:''}`;$('discount').value=String(q.discount||0);$('discountReason').value=q.discount>0?'Descuento aplicado en cotización '+q.id:'';$('deposit').value='0';recalculateTotal();updateServiceAvailability();
-  const items=getQuotes(),i=items.findIndex(x=>x.id===q.id);if(i>=0){items[i]={...items[i],status:'Convertida',convertedTo:$('contractNumber').textContent};setQuotes(items)}
+  const items=getQuotes(),i=items.findIndex(x=>x.id===q.id);if(i>=0){items[i]={...items[i],status:'Convertida',convertedTo:$('contractNumber').textContent,updatedAt:new Date().toISOString()};setQuotes(items);enqueueDocumentBackup('quote',items[i])}
   alert('Cotización cargada como contrato. Completa horarios, anticipo, aceptación y firma antes de generar.');
 }
 async function quoteCanvas(q){
@@ -956,7 +989,7 @@ function restoreWhatsappDefaults(){
   if(!confirm('¿Restaurar TODOS los mensajes originales de WhatsApp?'))return;
   localStorage.setItem(WHATSAPP_MESSAGES_KEY,JSON.stringify(DEFAULT_WHATSAPP_MESSAGES));
   localStorage.setItem(CLUB_TEMPLATES_KEY,JSON.stringify(DEFAULT_CLUB_TEMPLATES));
-  localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');clubTemplateDraft=null;renderWhatsappSettings();scheduleClubCloudBackup?.();alert('Mensajes originales restaurados.');
+  localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');clubTemplateDraft=null;renderWhatsappSettings();scheduleClubCloudBackup?.();scheduleMasterSnapshot();alert('Mensajes originales restaurados.');
 }
 function initWhatsappSettings(){
   $('saveWhatsappMessages')?.addEventListener('click',saveWhatsappSettings);
@@ -1022,7 +1055,7 @@ renderDashboard();renderSaved();initQuotes();initBackupSystem();
 // ============================================================================
 const REPORT_MONTHS=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 function getExpenses(){try{const x=JSON.parse(localStorage.getItem(EXPENSES_KEY)||'[]');return Array.isArray(x)?x:[]}catch{return[]}}
-function setExpenses(items){localStorage.setItem(EXPENSES_KEY,JSON.stringify(items));localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');renderReports();scheduleClubCloudBackup(700);updateExpensesCloudBadge()}
+function setExpenses(items){localStorage.setItem(EXPENSES_KEY,JSON.stringify(items));localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');renderReports();scheduleClubCloudBackup(700);updateExpensesCloudBadge();scheduleMasterSnapshot()}
 function monthKey(date=''){return String(date||'').slice(0,7)}
 function selectedReportKey(){return `${$('reportYear')?.value||new Date().getFullYear()}-${String($('reportMonth')?.value||new Date().getMonth()+1).padStart(2,'0')}`}
 function reportYears(){const years=new Set([new Date().getFullYear()]);getContracts().forEach(c=>c.eventDate&&years.add(Number(String(c.eventDate).slice(0,4))));getExpenses().forEach(e=>e.date&&years.add(Number(String(e.date).slice(0,4))));return [...years].filter(Boolean).sort((a,b)=>b-a)}
@@ -1039,8 +1072,9 @@ function updateExpensesCloudBadge(error=null){
   const el=$('expensesCloudBadge');if(!el)return;const pending=localStorage.getItem(CLUB_CLOUD_PENDING_KEY)==='1';
   if(error){el.textContent='☁️ Error';el.className='installed backup-bad'}
   else if(!cloudIsConnected()){el.textContent='☁️ Sin conectar';el.className='installed backup-warn'}
+  else if(!cloudBootstrapDone){el.textContent='☁️ Verificando';el.className='installed backup-warn'}
   else if(pending){el.textContent='☁️ Pendiente';el.className='installed backup-warn'}
-  else{el.textContent='☁️ Respaldado';el.className='installed backup-ok'}
+  else{el.textContent='☁️ Sincronizado';el.className='installed backup-ok'}
 }
 function renderReports(){
   if(!$('reportMonth')||!$('reportYear')||!$('reportMonth').value||!$('reportYear').value)return;
@@ -1063,7 +1097,7 @@ function renderReports(){
   $('topServices').innerHTML=top.length?top.map(([name,count],i)=>`<div class="service-rank"><span>${i+1}</span><div><strong>${escapeHtml(name)}</strong><small>${count} unidad${count===1?'':'es'} contratada${count===1?'':'s'}</small></div></div>`).join(''):'<div class="empty">Aún no hay servicios registrados en este mes.</div>';
   updateExpensesCloudBadge();
 }
-window.deleteExpense=id=>{if(confirm('¿Eliminar este gasto?'))setExpenses(getExpenses().filter(e=>String(e.id)!==String(id)))};
+window.deleteExpense=id=>{if(confirm('¿Eliminar este gasto?')){addDeletion('expenses',id);setExpenses(getExpenses().filter(e=>String(e.id)!==String(id)))}};
 function initReports(){
   refreshReportFilters();
   $('reportMonth')?.addEventListener('change',renderReports);$('reportYear')?.addEventListener('change',renderReports);
@@ -1107,7 +1141,7 @@ function getLoyalty(){
 function setLoyalty(items,{cloud=true}={}){
   localStorage.setItem(LOYALTY_KEY,JSON.stringify(items));
   if(cloud){localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');scheduleClubCloudBackup()}
-  renderLoyalty();renderDashboard();validateContractReferralCode();
+  renderLoyalty();renderDashboard();validateContractReferralCode();scheduleMasterSnapshot();
 }
 function getLoyaltySettings(){
   try{return {...{r1:4,n1:'50% de descuento',r2:8,n2:'1 renta gratis'},...(JSON.parse(localStorage.getItem(LOYALTY_SETTINGS_KEY)||'{}'))}}
@@ -1115,7 +1149,7 @@ function getLoyaltySettings(){
 }
 function setLoyaltySettings(data){
   localStorage.setItem(LOYALTY_SETTINGS_KEY,JSON.stringify(data));
-  localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');scheduleClubCloudBackup();renderLoyalty();
+  localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');scheduleClubCloudBackup();renderLoyalty();scheduleMasterSnapshot();
 }
 function getLoyaltyFolioState(){return Number(localStorage.getItem(LOYALTY_FOLIO_KEY)||0)||0}
 function syncLoyaltyFolioState(){
@@ -1192,7 +1226,7 @@ function renderLoyaltyCard(c){
   const hist=$('loyaltyHistory');if(hist)hist.innerHTML=(c.history||[]).length?(c.history||[]).slice(0,20).map(h=>`<div class="loyalty-history-item"><b>${escapeHtml(h.text||h.type||'Movimiento')}</b><small>${new Date(h.date||Date.now()).toLocaleString('es-MX')}</small></div>`).join(''):'<div class="empty">Todavía no hay movimientos.</div>';
 }
 window.openLoyalty=id=>{const c=getLoyalty().find(x=>x.id===id);if(!c)return;currentLoyaltyId=id;renderLoyaltyCard(c);$('loyaltyModal')?.classList.remove('hidden')};
-window.deleteLoyalty=id=>{const c=getLoyalty().find(x=>x.id===id);if(!c)return;if(confirm(`¿Eliminar a ${c.name} del Club Brinky? Su código ${c.code} no volverá a reutilizarse.`))setLoyalty(getLoyalty().filter(x=>x.id!==id))};
+window.deleteLoyalty=id=>{const c=getLoyalty().find(x=>x.id===id);if(!c)return;if(confirm(`¿Eliminar a ${c.name} del Club Brinky? Su código ${c.code} no volverá a reutilizarse.`)){addDeletion('members',id);setLoyalty(getLoyalty().filter(x=>x.id!==id))}};
 window.openContractClubMember=id=>{const d=getContracts().find(x=>x.id===id);if(!d)return;const c=getLoyalty().find(x=>x.id===d.clubMemberId)||getLoyalty().find(x=>normalizedPhone(x.phone)===normalizedPhone(d.clientPhone));if(c)openLoyalty(c.id);else alert('No se encontró el socio asociado a este contrato.')};
 function addMemberHistory(c,text,type='manual',contractId=''){c.history=c.history||[];c.history.unshift({date:new Date().toISOString(),type,text,contractId});c.updatedAt=new Date().toISOString()}
 window.completeContractAndStamp=id=>{
@@ -1246,37 +1280,26 @@ function addManualStamp(delta){
 
 let clubBackupTimer=null;
 function scheduleClubCloudBackup(delay=700){clearTimeout(clubBackupTimer);clubBackupTimer=setTimeout(()=>backupClubToCloud().catch(()=>{}),delay);updateClubCloudBadge()}
-async function backupClubToCloud(){
+async function backupClubToCloud(options={}){
   if(!cloudIsConnected()||!navigator.onLine){updateClubCloudBadge();return false}
+  if(!cloudBootstrapDone&&!options.allowBeforeBootstrap){updateClubCloudBadge();return false}
   const session=await ensureCloudSession();if(!session?.user?.id)return false;
-  const payload={members:getLoyalty(),settings:getLoyaltySettings(),folio:getLoyaltyFolioState(),expenses:getExpenses(),whatsappMessages:getWhatsappMessages(),clubTemplates:getClubMessageTemplates(),savedAt:new Date().toISOString()};
+  const payload={members:getLoyalty(),settings:getLoyaltySettings(),folio:getLoyaltyFolioState(),folioState:getFolioState(),capturePrefs:getCapturePrefs(),expenses:getExpenses(),whatsappMessages:getWhatsappMessages(),clubTemplates:getClubMessageTemplates(),deletedItems:getDeletedItems(),appVersion:APP_VERSION,savedAt:new Date().toISOString()};
   try{
     await cloudFetch('/rest/v1/brinky_club_backups?on_conflict=user_id',{method:'POST',headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({user_id:session.user.id,payload,updated_at:new Date().toISOString()})});
-    localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'0');updateClubCloudBadge();return true;
+    localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'0');updateClubCloudBadge();scheduleMasterSnapshot();return true;
   }catch(err){localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');updateClubCloudBadge(err);throw err}
 }
 function updateClubCloudBadge(error=null){
   const el=$('clubCloudBadge');if(!el)return;const pending=localStorage.getItem(CLUB_CLOUD_PENDING_KEY)==='1';
   if(error){el.textContent='☁️ Error';el.className='installed backup-bad';el.title=error?.message||String(error)}
   else if(!cloudIsConnected()){el.textContent='☁️ Sin conectar';el.className='installed backup-warn'}
+  else if(!cloudBootstrapDone){el.textContent='☁️ Verificando';el.className='installed backup-warn'}
   else if(pending){el.textContent='☁️ Pendiente';el.className='installed backup-warn'}
-  else{el.textContent='☁️ Respaldado';el.className='installed backup-ok'}
+  else{el.textContent='☁️ Sincronizado';el.className='installed backup-ok'}
   updateExpensesCloudBadge(error);
 }
-async function recoverClubFromCloud(){
-  if(!cloudIsConnected()){alert('Conecta primero Supabase desde Inicio.');return}
-  try{
-    const r=await cloudFetch('/rest/v1/brinky_club_backups?select=payload,updated_at&limit=1');const rows=await r.json(),remote=rows?.[0]?.payload;if(!remote){alert('Todavía no hay un respaldo de Club Brinky en esta cuenta.');return}
-    const localExpenses=getExpenses(),remoteExpenses=Array.isArray(remote.expenses)?remote.expenses:[];if(remoteExpenses.length){const ids=new Set(localExpenses.map(e=>String(e.id)));const mergedExpenses=[...localExpenses];for(const e of remoteExpenses)if(!ids.has(String(e.id))){mergedExpenses.push(e);ids.add(String(e.id))}localStorage.setItem(EXPENSES_KEY,JSON.stringify(mergedExpenses));}
-    const remoteWhatsapp=remote.whatsappMessages&&typeof remote.whatsappMessages==='object'?remote.whatsappMessages:null;if(remoteWhatsapp)localStorage.setItem(WHATSAPP_MESSAGES_KEY,JSON.stringify({...DEFAULT_WHATSAPP_MESSAGES,...remoteWhatsapp}));const remoteClubTemplates=remote.clubTemplates&&typeof remote.clubTemplates==='object'?remote.clubTemplates:null;if(remoteClubTemplates)localStorage.setItem(CLUB_TEMPLATES_KEY,JSON.stringify({...DEFAULT_CLUB_TEMPLATES,...remoteClubTemplates}));
-    const local=getLoyalty();
-    if(!local.length){localStorage.setItem(LOYALTY_KEY,JSON.stringify(remote.members||[]));localStorage.setItem(LOYALTY_SETTINGS_KEY,JSON.stringify(remote.settings||getLoyaltySettings()));if(remote.folio)localStorage.setItem(LOYALTY_FOLIO_KEY,String(remote.folio));localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'0');renderLoyalty();alert(`Club Brinky recuperado: ${(remote.members||[]).length} socios.`);return}
-    if(!confirm('Ya existen socios en este teléfono. Por seguridad NO se sobrescribirán. ¿Agregar únicamente los socios que falten?'))return;
-    const merged=[...local],phones=new Set(local.map(c=>normalizedPhone(c.phone)).filter(Boolean)),codes=new Set(local.map(c=>normalizeReferralCode(c.code)));
-    let added=0;for(const c of(remote.members||[])){const ph=normalizedPhone(c.phone),code=normalizeReferralCode(c.code);if((ph&&phones.has(ph))||(code&&codes.has(code)))continue;merged.push(c);if(ph)phones.add(ph);if(code)codes.add(code);added++}
-    localStorage.setItem(LOYALTY_KEY,JSON.stringify(merged));syncLoyaltyFolioState();localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');renderLoyalty();await backupClubToCloud();alert(`Recuperación segura terminada. Socios agregados: ${added}. Ningún socio local fue sobrescrito.`);
-  }catch(err){alert('No se pudo recuperar Club Brinky: '+(err?.message||err)+'\n\nSi acabas de instalar v2.0, verifica que ejecutaste ACTUALIZAR_SUPABASE_CLUB_BRINKY.sql.')}
-}
+async function recoverClubFromCloud(){if(!cloudIsConnected()){alert('Conecta primero Supabase desde Inicio.');return}try{await synchronizeCloudFirst({showAlert:true})}catch(err){alert('No se pudo recuperar Club Brinky: '+(err?.message||err))}}
 function initClubBrinky(){
   migrateLegacyClubIfAvailable();syncLoyaltyFolioState();
   if(localStorage.getItem(CLUB_CLOUD_PENDING_KEY)===null)localStorage.setItem(CLUB_CLOUD_PENDING_KEY,'1');
@@ -1288,8 +1311,8 @@ function initClubBrinky(){
   $('shareLoyaltyWhatsApp')?.addEventListener('click',async()=>{const c=getLoyalty().find(x=>x.id===currentLoyaltyId);if(!c)return;const b=$('shareLoyaltyWhatsApp'),old=b.textContent;b.disabled=true;b.textContent='Preparando…';try{await shareLoyaltyCard(c)}catch(err){if(err?.name!=='AbortError')alert('No se pudo compartir la tarjeta: '+(err?.message||err))}finally{b.disabled=false;b.textContent=old}});
   $('downloadLoyaltyCard')?.addEventListener('click',async()=>{const c=getLoyalty().find(x=>x.id===currentLoyaltyId);if(!c)return;try{saveGenericBlob(await makeLoyaltyCardBlob(c),`Tarjeta_Club_Brinky_${c.code}.png`)}catch(err){alert('No se pudo guardar la tarjeta: '+(err?.message||err))}});
   $('recoverClubCloud')?.addEventListener('click',recoverClubFromCloud);
-  window.addEventListener('online',()=>backupClubToCloud().catch(()=>{}));
-  renderLoyalty();if(localStorage.getItem(CLUB_CLOUD_PENDING_KEY)==='1')scheduleClubCloudBackup(1200);
+  window.addEventListener('online',()=>{if(cloudIsConnected()&&cloudBootstrapDone)backupClubToCloud().catch(()=>{})});
+  renderLoyalty();if(localStorage.getItem(CLUB_CLOUD_PENDING_KEY)==='1'&&(!cloudIsConnected()||cloudBootstrapDone))scheduleClubCloudBackup(1200);
 }
 
 // Inicializar Club Brinky después de declarar todo el módulo.

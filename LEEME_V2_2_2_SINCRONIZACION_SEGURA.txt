@@ -1,0 +1,45 @@
+BRINKY FIESTA SUITE v2.2.2 BETA · SINCRONIZACIÓN SEGURA
+
+OBJETIVO PRINCIPAL
+Evitar que una instalación nueva o una carpeta nueva de index.html sobrescriba con datos vacíos la información guardada en Supabase.
+
+CAMBIO CRÍTICO
+Antes: al conectar Supabase, Club Brinky podía subir inmediatamente el estado local. Si la instalación estaba vacía, podía reemplazar el respaldo del Club por un arreglo vacío.
+
+Ahora: al conectar Supabase, la app SIEMPRE intenta primero recuperar y combinar la información remota. Solo después respalda el estado combinado.
+
+INCLUYE
+- Sincronización remota primero (contratos, cotizaciones y Club Brinky).
+- Restauración automática al iniciar si la sesión de Supabase sigue conectada.
+- Estado visible de última sincronización.
+- Respaldo completo JSON exportable/importable.
+- Respaldo completo automático en la carpeta local de PC: BRINKY_FIESTA_SUITE_RESPALDO_COMPLETO.json.
+- Botón Recuperar carpeta (PC) que lee los JSON de Contratos/Cotizaciones creados por versiones anteriores.
+- Registro de eliminaciones para que un documento/socio/gasto eliminado no reaparezca solo por estar en la copia histórica de nube.
+- Folios y configuración auxiliar incluidos en el respaldo del Club.
+
+MUY IMPORTANTE SOBRE index.html
+Si abres C:\...\carpeta_v1\index.html y después C:\...\carpeta_v2\index.html, el navegador puede tratarlos como almacenamientos distintos. Esto NO es una forma segura de actualizar una PWA.
+
+Para uso permanente:
+1. Publica esta carpeta en una URL HTTPS fija (Netlify, Cloudflare Pages, GitHub Pages, etc.).
+2. Instala la PWA desde esa misma URL en el teléfono.
+3. En PC abre esa misma URL.
+4. Configura/conecta Supabase en cada dispositivo la primera vez.
+5. En futuras actualizaciones sustituye los archivos en el MISMO sitio HTTPS; no cambies la URL.
+
+SUPABASE
+Esta versión conserva las tablas existentes:
+- brinky_document_backups
+- brinky_club_backups
+No se requiere SQL nuevo si ya ejecutaste CONFIGURAR_RESPALDO_NUBE.sql y ACTUALIZAR_SUPABASE_CLUB_BRINKY.sql.
+
+PRIMERA PRUEBA RECOMENDADA
+1. En el equipo que todavía tenga datos, abre la versión donde sí aparecen.
+2. No borres nada.
+3. En v2.2.2 elige la misma carpeta de respaldo de PC y usa “Recuperar carpeta (PC)” si es necesario.
+4. Conecta Supabase y pulsa “Sincronizar ahora”.
+5. Confirma que el indicador diga “Al día”.
+6. Crea un contrato de prueba en teléfono y comprueba que aparezca en PC al sincronizar.
+
+Nunca pegues una clave service_role en la app. Usa solo Anon / Publishable key.
