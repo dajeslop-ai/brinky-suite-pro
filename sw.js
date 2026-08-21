@@ -1,3 +1,3 @@
-// BRINKY FIESTA SUITE v2.2.6 · actualización de caché
-// El parámetro de versión fuerza al navegador a descargar el núcleo nuevo.
-importScripts('./sw-core-v6.js?v=2.2.6');
+// BRINKY FIESTA SUITE v2.2.7 · actualización de caché
+// Fuerza la descarga del núcleo que incorpora la tarjeta premium del Club Brinky.
+importScripts('./sw-core-v6.js?v=2.2.7');
