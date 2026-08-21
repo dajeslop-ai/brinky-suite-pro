@@ -1,0 +1,52 @@
+BRINKY FIESTA SUITE · Versión 1.3
+
+Esta versión conserva todas las funciones estables de la Versión 1.0 y agrega el módulo COTIZACIONES.
+
+COTIZACIONES
+- Folio automático COT-AÑO-######
+- Cliente, teléfono y zona/dirección
+- Fecha tentativa del evento
+- Vigencia configurable: 3, 5, 7, 15 o 30 días
+- Estado: Pendiente, Enviada, Aceptada o Rechazada
+- Servicios del mismo catálogo de contratos + OTRO
+- Descuento
+- Notas
+- Guardar cotización
+- Generar vista previa
+- Guardar PDF
+- Enviar por WhatsApp / menú Compartir
+- Imprimir
+- Historial de cotizaciones
+- Convertir una cotización en contrato
+
+IMPORTANTE
+Una cotización NO bloquea equipos, horarios ni fechas. Solo un contrato guardado reserva disponibilidad.
+
+AL CONVERTIR A CONTRATO
+Se copian cliente, teléfono, zona, fecha tentativa, servicios, precios, descuento y notas. La cotización queda marcada como Convertida. Después deben completarse horarios, anticipo, aceptación y firma antes de generar el contrato.
+
+SE CONSERVA DE V1.0
+- Contratos PDF
+- Edición de contratos
+- Fecha de realización del contrato
+- Observaciones antes de cláusulas
+- Tiempo con HRS
+- Servicio OTRO sin bloqueo de disponibilidad
+- Bloqueo de equipo físico por cruce de horario
+- WhatsApp, descarga PDF e impresión
+
+Todavía NO incluye respaldo local en carpeta + nube. Esa mejora se implementará después de validar cotizaciones.
+
+
+CAMBIO v1.2 - FOLIOS HISTÓRICOS
+- Un folio de contrato o cotización que ya fue guardado nunca vuelve a utilizarse aunque el documento sea eliminado.
+- Los contadores se llevan por separado para contratos BF y cotizaciones COT, y por año.
+
+
+CAMBIO v1.3 - LIMPIEZA DE FORMULARIOS
+- Nuevo contrato limpia completamente los datos del contrato anterior y genera un folio nuevo.
+- Nueva cotización limpia completamente los datos de la cotización anterior y genera un folio nuevo.
+- Los accesos inferiores Nuevo y Cotizar ejecutan una captura realmente nueva.
+- Ya no se hereda automáticamente el servicio anterior en contratos o cotizaciones.
+- Se conserva solo el comportamiento seguro de Cerrar vista previa: no borra la captura actual.
+- La vista previa de cotización agrega botón Nueva cotización.

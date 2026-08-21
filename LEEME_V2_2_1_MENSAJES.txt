@@ -1,0 +1,15 @@
+BRINKY FIESTA SUITE v2.2.1 BETA - MENSAJES WHATSAPP CORREGIDOS
+
+Esta versión deja visible la opción 💬 Mensajes WhatsApp desde Inicio y desde la barra superior.
+
+Incluye:
+- Mensaje de contrato configurable.
+- Mensaje de cotización configurable.
+- Club Brinky: Bienvenida, Actualización, Premio y Referencia.
+- Variables automáticas y vista previa del mensaje Club.
+- Enlace de Facebook configurable.
+- Restaurar mensajes originales.
+- Respaldo de estas configuraciones con los datos auxiliares en Supabase.
+
+No requiere ejecutar un SQL nuevo.
+El envío continúa siendo manual para evitar errores de WhatsApp encadenado.

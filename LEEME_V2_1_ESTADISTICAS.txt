@@ -1,0 +1,25 @@
+BRINKY FIESTA SUITE v2.1 BETA · ANDROID + CLUB BRINKY + ESTADÍSTICAS
+
+NOVEDAD PRINCIPAL
+- Recuperada la sección de Estadísticas/Reportes de la Suite anterior.
+- Filtro por mes y año.
+- Contratos del mes.
+- Total vendido.
+- Cobrado calculado como TOTAL - SALDO PENDIENTE.
+- Saldo pendiente.
+- Ticket promedio.
+- Servicios realizados.
+- Gastos registrados.
+- Ganancia estimada = cobrado - gastos registrados.
+- Ranking de servicios más rentados.
+- Detalle de contratos del mes.
+
+GASTOS Y NUBE
+Los gastos usan la clave histórica brinky_expenses_v1 para facilitar recuperación desde versiones anteriores.
+En v2.1 también se incluyen dentro del respaldo auxiliar existente de Supabase (brinky_club_backups), por lo que NO hace falta ejecutar otro SQL.
+
+SEGURIDAD
+- Contratos/Cotizaciones continúan independientes de Club y Estadísticas.
+- La sección de Estadísticas solo lee contratos existentes y guarda sus propios gastos.
+- Borrar un gasto NO borra contratos ni socios.
+- La v2.0.1 permanece como respaldo anterior.

@@ -1,0 +1,18 @@
+BRINKY FIESTA SUITE v2.2 BETA · ANDROID
+
+NOVEDAD: CONFIGURACIÓN DE MENSAJES DE WHATSAPP
+
+Desde Inicio > Configuración puedes personalizar los mensajes de:
+- Contratos
+- Cotizaciones
+- Tarjeta Club Brinky
+
+Variables disponibles:
+Contrato: {cliente}, {folio}, {fecha_evento}, {total}, {saldo}, {anticipo}, {direccion}
+Cotización: {cliente}, {folio}, {fecha_evento}, {total}, {vigencia}, {direccion}
+Club: {cliente}, {codigo_socio}, {estrellas}, {meta}, {faltan}, {premio}, {estado_premio}
+
+Los mensajes se guardan localmente y se incluyen en el respaldo auxiliar de Supabase.
+No requiere SQL adicional.
+
+Se mantienen las funciones de v2.1: contratos, cotizaciones, Club Brinky, estadísticas y respaldo.

@@ -1,0 +1,47 @@
+BRINKY FIESTA SUITE v2.0.1 BETA · ANDROID + CLUB BRINKY
+
+OBJETIVO
+Esta rama está pensada para trabajar principalmente desde UN teléfono.
+Conserva Contratos, Cotizaciones, PDF, WhatsApp, folios históricos y respaldo Supabase.
+Agrega Club Brinky como módulo aislado para que un fallo del Club nunca borre ni invalide un contrato.
+
+CLUB BRINKY
+- Registro de socios por nombre y teléfono.
+- Código histórico BRK-0001, BRK-0002... Los códigos eliminados no se reutilizan.
+- 4 estrellas = 50% de descuento (configurable).
+- 8 estrellas = 1 renta gratis (configurable).
+- Historial de movimientos.
+- Tarjeta digital con QR cuando hay Internet.
+- Compartir tarjeta por el menú nativo del teléfono / WhatsApp.
+- Código de referido opcional en el contrato.
+- El socio que recomienda recibe una estrella solo cuando el servicio se marca REALIZADO.
+- El cliente recibe una estrella por el servicio realizado.
+- No hay mensajes automáticos encadenados: el envío de la tarjeta es manual.
+
+MUY IMPORTANTE
+Guardar/generar un contrato NO otorga una estrella automáticamente.
+En Contratos guardados pulsa “Servicio realizado + ⭐” cuando el evento realmente terminó.
+Esto evita otorgar premios por eventos cancelados.
+
+RESPALDO
+En Android:
+- Los datos se conservan dentro de la app.
+- Supabase es el respaldo externo automático.
+- La carpeta física es opcional y está pensada para PC, no es necesaria en el teléfono.
+
+SUPABASE
+Si ya configuraste v1.4, NO vuelvas a ejecutar su SQL.
+Solo ejecuta una vez: ACTUALIZAR_SUPABASE_CLUB_BRINKY.sql
+Esto crea la tabla privada public.brinky_club_backups.
+
+INSTALACIÓN EN TELÉFONO
+La PWA debe publicarse en HTTPS (GitHub Pages, Netlify, Cloudflare Pages, etc.).
+Luego abre la URL en Chrome Android > menú de tres puntos > Instalar app / Agregar a pantalla principal.
+
+ESTADO BETA
+Mantén tu v1.4 estable como respaldo mientras pruebas esta rama.
+
+
+CORRECCIÓN v2.0.1
+- El logotipo de la tarjeta Club Brinky se incrusta como Data URL para evitar el error "Tainted canvas" al ejecutar index.html directamente desde Windows (file://).
+- No requiere cambios adicionales en Supabase.

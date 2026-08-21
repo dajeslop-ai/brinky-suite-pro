@@ -1,0 +1,45 @@
+BRINKY FIESTA SUITE v1.4 - RESPALDO SEGURO
+
+QUÉ HACE
+- Conserva el almacenamiento interno de la app (localStorage), igual que antes.
+- Puede guardar automáticamente PDF + JSON en una carpeta física elegida por ti.
+- Puede subir automáticamente otra copia del PDF + datos a Supabase.
+- Si no hay Internet, el documento sigue guardándose localmente y queda pendiente de nube.
+- Si la carpeta pierde permiso, el documento sigue dentro de la app y queda pendiente de respaldo local.
+- Eliminar un contrato/cotización de la app NO elimina las copias ya creadas en la carpeta ni en la nube.
+- La nube es SOLO respaldo: nunca sobrescribe automáticamente tus documentos locales.
+
+CARPETA LOCAL (EDGE / CHROME)
+1. Abre Inicio > Respaldo seguro.
+2. Pulsa "Elegir carpeta local".
+3. Elige, por ejemplo, Documentos > BRINKY FIESTA SUITE.
+4. La app creará automáticamente:
+   Contratos/2026/
+   Contratos/2026/Datos/
+   Cotizaciones/2026/
+   Cotizaciones/2026/Datos/
+5. Los PDF quedan en la carpeta del año y un JSON recuperable en Datos.
+6. Por seguridad del navegador, después de cerrar/reabrir Edge puede pedirte reautorizar la carpeta. Pulsa "Respaldar pendientes" y concede el permiso si aparece.
+
+NUBE (SUPABASE)
+1. En tu proyecto Supabase abre SQL Editor.
+2. Ejecuta completo CONFIGURAR_RESPALDO_NUBE.sql.
+3. Copia Project URL y la clave pública Anon/Publishable.
+4. En Inicio > Respaldo seguro > Configurar nube pega esos dos valores.
+5. Usa una cuenta de correo/contraseña de Supabase Auth. Puedes crearla desde la app.
+6. Pulsa "Conectar nube".
+7. La app intentará respaldar automáticamente todos los documentos actuales y los nuevos.
+
+IMPORTANTE
+- NUNCA uses ni pegues la clave service_role en la app.
+- La contraseña no se guarda en la configuración. Se guarda una sesión de autenticación renovable.
+- Los PDF del bucket brinky-documents son privados.
+- La app no necesita Internet para crear contratos/cotizaciones.
+- "Recuperar faltantes" solo agrega documentos que no existan localmente; NO sobrescribe los que ya tienes.
+
+INDICADORES
+💾 Local ✓ = hay PDF + JSON en la carpeta autorizada.
+☁️ Nube ✓ = hay copia de datos + PDF en Supabase.
+… = respaldo pendiente.
+! = ocurrió un error; usa "Respaldar pendientes" para reintentar.
+⚙ = esa copia todavía no está configurada.
