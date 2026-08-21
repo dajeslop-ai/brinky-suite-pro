@@ -1,5 +1,5 @@
-const CACHE='brinky-fiesta-suite-v2-2-3-folios-80-fix6';
-const ASSETS=['./','./index.html','./styles.css?v=2.2.3','./app.js?v=2.2.3','./runtime-patch-v6.js','./manifest.json','./icons/icon-192.png','./icons/icon-512.png','./icons/apple-touch-icon.png','./assets/facebook-banner.jpg'];
+const CACHE='brinky-fiesta-suite-v2-2-7-folios-80-fix6';
+const ASSETS=['./','./index.html','./styles.css?v=2.2.3','./app.js?v=2.2.3','./runtime-patch-v6.js','./runtime-patch-v7.js','./manifest.json','./icons/icon-192.png','./icons/icon-512.png','./icons/apple-touch-icon.png','./assets/facebook-banner.jpg'];
 
 // El historial de folios nunca baja al eliminar un documento.
 const FOLIO_BOOTSTRAP="(()=>{try{const k='brinky_folio_state_v1',y=String(new Date().getFullYear()),s=JSON.parse(localStorage.getItem(k)||'{}');s.contracts=s.contracts||{};s.quotes=s.quotes||{};s.contracts[y]=Math.max(Number(s.contracts[y]||0),79);s.quotes[y]=Math.max(Number(s.quotes[y]||0),79);localStorage.setItem(k,JSON.stringify(s));}catch(e){}})();\n";
@@ -55,7 +55,11 @@ function moveBackupToEnd(html){
 async function runtimePatchText(){
   try{
     const r=await fetch('./runtime-patch-v6.js',{cache:'no-store'});
-    if(r.ok)return await r.text();
+    if(r.ok){
+      const base=await r.text();
+      try{const r2=await fetch('./runtime-patch-v7.js',{cache:'no-store'});if(r2.ok)return base+'\n'+await r2.text();}catch(e){}
+      return base;
+    }
   }catch(e){}
   const cached=await caches.match('./runtime-patch-v6.js');
   return cached?await cached.text():'';
