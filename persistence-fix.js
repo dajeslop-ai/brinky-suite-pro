@@ -26,3 +26,4 @@
   window.addEventListener('online',()=>setTimeout(()=>{if(window.cloudIsConnected?.())window.synchronizeCloudFirst?.({showAlert:false}).catch(()=>{});writeMirror()},500));
   boot();
 })();
+/* deployment trigger */
