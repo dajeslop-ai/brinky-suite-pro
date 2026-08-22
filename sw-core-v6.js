@@ -1,5 +1,5 @@
-const CACHE='brinky-fiesta-suite-v2-2-8-local-first';
-const ASSETS=['./','./index.html','./styles.css?v=2.2.3','./app.js?v=2.2.3','./runtime-patch-v6.js','./runtime-patch-v7.js','./runtime-patch-v8.js?v=2','./manifest.json','./icons/icon-192.png','./icons/icon-512.png','./icons/apple-touch-icon.png','./assets/facebook-banner.jpg'];
+const CACHE='brinky-fiesta-suite-v2-2-9-persistent-session';
+const ASSETS=['./','./index.html','./styles.css?v=2.2.3','./app.js?v=2.2.3','./runtime-patch-v6.js','./runtime-patch-v7.js','./runtime-patch-v8.js?v=2','./runtime-patch-v9.js?v=1','./manifest.json','./icons/icon-192.png','./icons/icon-512.png','./icons/apple-touch-icon.png','./assets/facebook-banner.jpg'];
 
 const FOLIO_BOOTSTRAP="(()=>{try{const k='brinky_folio_state_v1',y=String(new Date().getFullYear()),s=JSON.parse(localStorage.getItem(k)||'{}');s.contracts=s.contracts||{};s.quotes=s.quotes||{};s.contracts[y]=Math.max(Number(s.contracts[y]||0),79);s.quotes[y]=Math.max(Number(s.quotes[y]||0),79);localStorage.setItem(k,JSON.stringify(s));}catch(e){}})();\n";
 
@@ -16,7 +16,7 @@ function patchAppSource(text){
 function moveBackupToEnd(html){try{const startMarker='<section class="card backup-card" id="backupCard">',start=html.indexOf(startMarker);if(start<0)return html;const close=html.indexOf('</section>',start);if(close<0)return html;const end=close+'</section>'.length,block=html.slice(start,end);let rest=html.slice(0,start)+html.slice(end);const homeEnd='\n  </section>\n\n  <section id="newView"',anchor=rest.indexOf(homeEnd);if(anchor<0)return html;return rest.slice(0,anchor)+'\n    '+block.trim()+'\n'+rest.slice(anchor)}catch(e){return html}}
 async function runtimePatchText(){
   let out='';
-  for(const url of ['./runtime-patch-v6.js','./runtime-patch-v7.js','./runtime-patch-v8.js?v=2']){
+  for(const url of ['./runtime-patch-v6.js','./runtime-patch-v7.js','./runtime-patch-v8.js?v=2','./runtime-patch-v9.js?v=1']){
     try{const r=await fetch(url,{cache:'no-store'});if(r.ok)out+='\n'+await r.text()}catch(e){}
   }
   if(out.trim())return out;
