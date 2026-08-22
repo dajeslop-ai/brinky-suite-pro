@@ -1,4 +1,4 @@
-name: Apply BRINKY persistence fix
+name: Apply BRINKY recovery-first v2.4.0
 
 on:
   push:
@@ -9,40 +9,60 @@ permissions:
 
 jobs:
   patch-app:
-    if: github.event.head_commit.message != 'chore: apply persistence fix v2.3.1'
+    if: github.event.head_commit.message != 'chore: apply recovery-first v2.4.0'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Patch version and load persistent recovery
+      - name: Activate recovery-first and consistent version
         run: |
           python - <<'PY'
           from pathlib import Path
 
           index = Path('index.html')
           text = index.read_text(encoding='utf-8')
-          text = text.replace('BRINKY FIESTA SUITE · v2.2.5 · Folios desde 80', 'BRINKY FIESTA SUITE · v2.3.1 · Folios desde 80')
-          text = text.replace('styles.css?v=2.2.5', 'styles.css?v=2.3.1')
-          text = text.replace('Versión 2.2.3 BETA · Folios desde 80', 'Versión 2.3.1 · Folios desde 80')
-          text = text.replace('<strong>v2.2.3</strong>', '<strong>v2.3.1</strong>')
-          if 'persistence-fix.js?v=2.3.1' not in text:
-              text = text.replace('<script src="app.js?v=2.2.4"></script>', '<script src="app.js?v=2.3.1"></script>\n<script src="persistence-fix.js?v=2.3.1"></script>')
-          text = text.replace('app.js?v=2.3.0', 'app.js?v=2.3.1')
-          text = text.replace('persistence-fix.js?v=2.3.0', 'persistence-fix.js?v=2.3.1')
+          replacements = {
+              'BRINKY FIESTA SUITE · v2.2.5 · Folios desde 80': 'BRINKY FIESTA SUITE · v2.4.0 · Folios desde 80',
+              'styles.css?v=2.2.5': 'styles.css?v=2.4.0',
+              'Versión 2.2.3 BETA · Folios desde 80': 'Versión 2.4.0 · Folios desde 80',
+              '<strong>v2.2.3</strong>': '<strong>v2.4.0</strong>',
+              'app.js?v=2.2.4': 'app.js?v=2.4.0',
+          }
+          for old, new in replacements.items():
+              text = text.replace(old, new)
+          tag = '<script src="recovery-first.js?v=2.4.0"></script>'
+          if tag not in text:
+              text = text.replace('<script src="app.js?v=2.4.0"></script>', tag + '\n<script src="app.js?v=2.4.0"></script>')
           index.write_text(text, encoding='utf-8')
 
           app = Path('app.js')
           text = app.read_text(encoding='utf-8')
-          text = text.replace("const APP_VERSION='2.2.3';", "const APP_VERSION='2.3.1';")
-          text = text.replace('Antes de subir nada, v2.2.3 recuperará la nube.', 'Antes de subir nada, v2.3.1 recuperará la nube.')
+          text = text.replace("const APP_VERSION='2.2.3';", "const APP_VERSION='2.4.0';")
+          text = text.replace('Antes de subir nada, v2.2.3 recuperará la nube.', 'Antes de subir nada, v2.4.0 recuperará la nube.')
           app.write_text(text, encoding='utf-8')
+
+          sw = Path('sw.js')
+          if sw.exists():
+              text = sw.read_text(encoding='utf-8').replace('v2.3.1', 'v2.4.0')
+              sw.write_text(text, encoding='utf-8')
+
+          core = Path('sw-core-v6.js')
+          if core.exists():
+              text = core.read_text(encoding='utf-8')
+              text = text.replace('brinky-fiesta-suite-v2-3-1-persistent-session', 'brinky-fiesta-suite-v2-4-0-recovery-first')
+              text = text.replace('styles.css?v=2.3.1', 'styles.css?v=2.4.0')
+              text = text.replace('app.js?v=2.3.1', 'app.js?v=2.4.0')
+              text = text.replace('persistence-fix.js?v=2.3.1', 'persistence-fix.js?v=2.4.0')
+              if "'./recovery-first.js?v=2.4.0'" not in text:
+                  text = text.replace("'./persistence-fix.js?v=2.4.0'", "'./recovery-first.js?v=2.4.0','./persistence-fix.js?v=2.4.0'")
+              core.write_text(text, encoding='utf-8')
           PY
 
       - name: Commit patched app
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add index.html app.js
+          git add index.html app.js sw.js sw-core-v6.js
           git diff --cached --quiet && exit 0
-          git commit -m 'chore: apply persistence fix v2.3.1'
+          git commit -m 'chore: apply recovery-first v2.4.0'
           git push
