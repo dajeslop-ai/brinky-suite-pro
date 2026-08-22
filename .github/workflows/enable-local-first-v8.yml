@@ -14,17 +14,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Inject runtime patch
+      - name: Inject latest local-first runtime patch
         run: |
           python - <<'PY'
           from pathlib import Path
           p=Path('index.html')
           s=p.read_text(encoding='utf-8')
-          tag='<script src="runtime-patch-v8.js?v=1"></script>'
-          if tag not in s:
-              marker='</body>'
-              s=s.replace(marker,tag+'\n'+marker,1)
-              p.write_text(s,encoding='utf-8')
+          old='<script src="runtime-patch-v8.js?v=1"></script>'
+          new='<script src="runtime-patch-v8.js?v=2"></script>'
+          if old in s:
+              s=s.replace(old,new,1)
+          elif new not in s:
+              s=s.replace('</body>',new+'\n</body>',1)
+          p.write_text(s,encoding='utf-8')
           PY
       - name: Commit
         run: |
