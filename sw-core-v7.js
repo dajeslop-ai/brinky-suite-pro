@@ -1,0 +1,18 @@
+const CACHE='brinky-fiesta-suite-v2-4-0-recovery-first';
+const ASSETS=['./','./index.html','./styles.css?v=2.4.0','./app.js?v=2.4.0','./recovery-first.js?v=2.4.0','./persistence-fix.js?v=2.4.0','./runtime-patch-v6.js','./runtime-patch-v7.js','./runtime-patch-v8.js?v=2','./runtime-patch-v9.js?v=1','./manifest.json','./icons/icon-192.png','./icons/icon-512.png','./icons/apple-touch-icon.png','./assets/facebook-banner.jpg'];
+const patchHtml=t=>t.replaceAll('BRINKY FIESTA SUITE · v2.2.5 · Folios desde 80','BRINKY FIESTA SUITE · v2.4.0 · Folios desde 80').replaceAll('Versión 2.2.3 BETA · Folios desde 80','Versión 2.4.0 · Folios desde 80').replace('<script src="app.js?v=2.2.4"></script>','<script src="recovery-first.js?v=2.4.0"></script>\n<script src="app.js?v=2.4.0"></script>');
+async function getText(url){try{const r=await fetch(url,{cache:'no-store'});return r.ok?await r.text():''}catch{return ''}}
+async function patchApp(t){
+  t=t.replace("const APP_VERSION='2.2.3';","const APP_VERSION='2.4.0';").replace('Antes de subir nada, v2.2.3 recuperará la nube.','Antes de subir nada, v2.4.0 recuperará la nube.');
+  const recovery=await getText('./recovery-first.js?v=2.4.0');
+  let patches='';
+  for(const u of ['./runtime-patch-v6.js','./runtime-patch-v7.js','./runtime-patch-v8.js?v=2','./runtime-patch-v9.js?v=1','./persistence-fix.js?v=2.4.0'])patches+='\n'+await getText(u);
+  return `(async()=>{window.__brinkyRecoveryPromise=window.__brinkyRecoveryPromise||Promise.resolve();await window.__brinkyRecoveryPromise;\n${recovery}\nawait new Promise(r=>window.__brinkyRecoveryReady?r():window.addEventListener('brinky-recovery-ready',r,{once:true}));\n${t}\n${patches}\n})();`;
+}
+self.addEventListener('install',e=>e.waitUntil((async()=>{const c=await caches.open(CACHE);for(const u of ASSETS){try{const r=await fetch(u,{cache:'reload'});if(r.ok)await c.put(u,r.clone())}catch{}}await self.skipWaiting()})()));
+self.addEventListener('activate',e=>e.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)));await self.clients.claim()})()));
+self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;const u=new URL(e.request.url);if(u.origin!==self.location.origin)return;
+ if(e.request.mode==='navigate'||/\/index\.html$/.test(u.pathname)||u.pathname.endsWith('/brinky-suite-pro/'))e.respondWith((async()=>{try{const r=await fetch(e.request,{cache:'no-store'});if(!r.ok)throw Error();const text=patchHtml(await r.text()),c=await caches.open(CACHE),out=new Response(text,{status:r.status,headers:new Headers({...Object.fromEntries(r.headers), 'content-type':'text/html; charset=utf-8'})});await c.put('./index.html',out.clone());return out}catch{const c=await caches.match('./index.html');if(c)return new Response(patchHtml(await c.text()),{status:200,headers:{'content-type':'text/html; charset=utf-8'}});throw Error('offline')}})());
+ else if(/\/app\.js$/.test(u.pathname))e.respondWith((async()=>{try{const t=await getText(e.request.url),p=await patchApp(t),c=await caches.open(CACHE),out=new Response(p,{status:200,headers:{'content-type':'application/javascript; charset=utf-8'}});await c.put('./app.js?v=2.4.0',out.clone());return out}catch{const c=await caches.match('./app.js?v=2.4.0');if(c)return c;throw Error('app unavailable')}})());
+ else e.respondWith((async()=>{try{const r=await fetch(e.request,{cache:'no-store'});if(r.ok){const c=await caches.open(CACHE);await c.put(e.request,r.clone())}return r}catch{return caches.match(e.request)}})());
+});
