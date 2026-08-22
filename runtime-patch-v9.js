@@ -1,4 +1,4 @@
-// BRINKY FIESTA SUITE v2.2.5 · PC session persistence + automatic background sync
+// BRINKY FIESTA SUITE v2.2.9 · PC session persistence + automatic background sync
 (function(){
   if(window.__BRINKY_SESSION_V9__) return;
   window.__BRINKY_SESSION_V9__=true;
@@ -13,12 +13,16 @@
   async function persistCurrentSession(){const s=readSession();if(s?.access_token){const sig=String(s.access_token)+'|'+String(s.refresh_token||'');if(sig!==lastSession){lastSession=sig;await writeVault(s)}}else if(lastSession){lastSession='';await clearVault()}}
   async function restoreSession(){const current=readSession();if(current?.access_token){lastSession=String(current.access_token)+'|'+String(current.refresh_token||'');return current}const saved=await readVault();if(saved?.access_token){writeSession(saved);lastSession=String(saved.access_token)+'|'+String(saved.refresh_token||'');return saved}return null}
   async function backgroundSync(){try{if(!navigator.onLine)return;const s=await restoreSession();if(!s)return; if(typeof window.synchronizeCloudFirst==='function'){await window.synchronizeCloudFirst({showAlert:false})}else if(typeof window.processBackupQueue==='function'){await window.processBackupQueue()}}catch{}}
+  function refreshVisibleVersion(){try{document.querySelectorAll('*').forEach(el=>{if(el.children.length===0&&el.textContent.includes('2.2.3'))el.textContent=el.textContent.replaceAll('2.2.3','2.2.9')});if(document.title)document.title=document.title.replaceAll('2.2.3','2.2.9')}catch{}}
+  function clarifyPendingTile(){try{const tile=document.getElementById('pendingBackupCount');const detail=document.getElementById('pendingBackupDetail');if(tile&&detail){const n=Number(tile.textContent||0);detail.textContent=n>0?'Archivos locales pendientes de completar el respaldo automático.':'Respaldo local al día.'}}catch{}}
   (async()=>{
     await restoreSession();
     await persistCurrentSession();
+    refreshVisibleVersion();
+    clarifyPendingTile();
     setTimeout(backgroundSync,800);
     setTimeout(backgroundSync,3000);
   })();
-  setInterval(async()=>{await persistCurrentSession();if(navigator.onLine)await backgroundSync()},15000);
+  setInterval(async()=>{await persistCurrentSession();if(navigator.onLine)await backgroundSync();refreshVisibleVersion();clarifyPendingTile()},15000);
   window.addEventListener('online',()=>setTimeout(backgroundSync,500));
 })();
