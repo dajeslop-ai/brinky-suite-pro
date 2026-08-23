@@ -1,2 +1,2 @@
-// BRINKY FIESTA SUITE v2.4.0 · recovery-first + persistencia local + nube automática
-importScripts('./sw-core-v7.js?v=2.4.0');
+// BRINKY FIESTA SUITE v2.4.1 · recovery-first + hard cache reset
+importScripts('./sw-core-v8.js?v=2.4.1');
